@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+from datetime import datetime, timedelta
 
 # -------------------------------------------------
 # PAGE CONFIG
@@ -11,53 +12,110 @@ st.set_page_config(
 )
 
 # -------------------------------------------------
-# PREMIUM-STYLE CSS
+# PREMIUM DARK UI (StakingAI-style)
 # -------------------------------------------------
 st.markdown(
     """
     <style>
+        /* Global background */
         .main {
-            background: radial-gradient(circle at top left, #1b2030, #05060a 55%);
+            background: radial-gradient(circle at top left, #1b1f2b, #050509 60%);
         }
         section[data-testid="stSidebar"] {
-            background: linear-gradient(180deg, #07090f, #131728);
-            border-right: 1px solid rgba(255,255,255,0.04);
+            background: linear-gradient(180deg, #050509, #111320);
+            border-right: 1px solid rgba(255,255,255,0.08);
         }
+
+        /* Remove default top padding */
+        .block-container {
+            padding-top: 1.2rem;
+            padding-bottom: 1.2rem;
+        }
+
+        /* Sidebar title */
+        .gg-sidebar-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: #f4f4f6;
+        }
+        .gg-sidebar-sub {
+            font-size: 0.72rem;
+            color: rgba(255,255,255,0.55);
+        }
+
+        /* Metric cards */
         .metric-card {
-            padding: 1.0rem 1.2rem;
+            padding: 0.9rem 1.1rem;
             border-radius: 0.9rem;
-            background: radial-gradient(circle at top left, #262b3f, #101322);
-            border: 1px solid rgba(255,255,255,0.04);
-            box-shadow: 0 10px 25px rgba(0,0,0,0.55);
+            background: radial-gradient(circle at top left, #232634, #0c0f18);
+            border: 1px solid rgba(255,255,255,0.06);
+            box-shadow: 0 14px 30px rgba(0,0,0,0.7);
         }
         .metric-label {
             font-size: 0.75rem;
-            letter-spacing: 0.08em;
+            letter-spacing: 0.14em;
             text-transform: uppercase;
             color: rgba(255,255,255,0.65);
         }
         .metric-value {
-            font-size: 1.4rem;
+            font-size: 1.5rem;
             font-weight: 600;
-            margin-top: 0.25rem;
+            margin-top: 0.15rem;
+            color: #fdfdfd;
         }
         .metric-sub {
             font-size: 0.7rem;
-            color: rgba(255,255,255,0.55);
-            margin-top: 0.15rem;
+            margin-top: 0.1rem;
+            color: rgba(255,255,255,0.5);
         }
+
+        /* Section titles */
         .section-title {
-            font-size: 0.9rem;
-            letter-spacing: 0.16em;
+            font-size: 0.8rem;
+            letter-spacing: 0.18em;
             text-transform: uppercase;
-            color: rgba(255,255,255,0.55);
-            margin-bottom: 0.4rem;
+            color: rgba(255,255,255,0.6);
+            margin: 0.4rem 0 0.3rem 0;
         }
+
+        /* Generic block card */
         .block-card {
-            padding: 1.0rem 1.2rem;
+            padding: 1rem 1.1rem;
             border-radius: 0.9rem;
-            background: rgba(8,9,16,0.92);
-            border: 1px solid rgba(255,255,255,0.04);
+            background: rgba(8,9,15,0.96);
+            border: 1px solid rgba(255,255,255,0.06);
+        }
+
+        /* Accent chip */
+        .accent-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            padding: 0.2rem 0.55rem;
+            border-radius: 999px;
+            background: linear-gradient(90deg, #ff8c32, #ffb347);
+            color: #050509;
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+        }
+
+        /* Positions table wrapper look */
+        .positions-wrapper {
+            border-radius: 0.6rem;
+            overflow: hidden;
+            border: 1px solid rgba(255,255,255,0.05);
+            background: rgba(5,6,12,0.9);
+        }
+
+        /* Tiny footer text */
+        .gg-footer {
+            font-size: 0.65rem;
+            color: rgba(255,255,255,0.4);
+            margin-top: 0.6rem;
         }
     </style>
     """,
@@ -65,150 +123,72 @@ st.markdown(
 )
 
 # -------------------------------------------------
-# HELPERS
-# -------------------------------------------------
-def load_mt5_csv(file):
-    """
-    Read raw MT5 M5 CSV:
-    time, open, high, low, close, tick_volume, ...
-    No headers in MT5 export, so we force them.
-    """
-    try:
-        df = pd.read_csv(file, header=None)
-        if df.shape[1] < 5:
-            return None, "CSV looks wrong: expected at least 5 columns (time, open, high, low, close)."
-
-        # Keep only first 6 columns: time + OHLC + tick_volume
-        df = df.iloc[:, :6]
-        df.columns = ["time", "open", "high", "low", "close", "tick_volume"]
-
-        df["time"] = pd.to_datetime(df["time"], errors="coerce")
-        df = df.dropna(subset=["time"])
-        df = df.set_index("time").sort_index()
-
-        return df, None
-    except Exception as e:
-        return None, f"Error while reading CSV: {e}"
-
-
-def simple_backtest(df, risk_pct: float = 1.0, rr_multiple: float = 4.0):
-    """
-    VERY SIMPLE placeholder engine so the dashboard has numbers.
-    This is NOT your final ICT window / 15M+5M logic.
-    We will replace this later with your proper NY-window engine.
-    """
-    o = df["open"].values
-    h = df["high"].values
-    l = df["low"].values
-    c = df["close"].values
-
-    results_R = []
-
-    # basic engulfing-style placeholder
-    for i in range(1, len(df) - 50):
-        # bullish engulfing
-        if c[i] > o[i] and c[i - 1] < o[i - 1] and c[i] > h[i - 1] and l[i] < l[i - 1]:
-            entry = c[i]
-            sl = l[i]
-            risk = entry - sl
-            tp = entry + rr_multiple * risk
-
-            win = False
-            for j in range(i + 1, i + 51):
-                if l[j] <= sl:
-                    break
-                if h[j] >= tp:
-                    win = True
-                    break
-            results_R.append(rr_multiple if win else -1.0)
-
-        # bearish engulfing
-        elif c[i] < o[i] and c[i - 1] > o[i - 1] and c[i] < l[i - 1] and h[i] > h[i - 1]:
-            entry = c[i]
-            sl = h[i]
-            risk = sl - entry
-            tp = entry - rr_multiple * risk
-
-            win = False
-            for j in range(i + 1, i + 51):
-                if h[j] >= sl:
-                    break
-                if l[j] <= tp:
-                    win = True
-                    break
-            results_R.append(rr_multiple if win else -1.0)
-
-    total = len(results_R)
-    wins = sum(1 for r in results_R if r > 0)
-    losses = total - wins
-    winrate = (wins / total * 100.0) if total > 0 else 0.0
-    total_R = sum(results_R)
-
-    return {
-        "total_trades": total,
-        "wins": wins,
-        "losses": losses,
-        "winrate": winrate,
-        "total_R": total_R,
-    }
-
-
-# -------------------------------------------------
-# SIDEBAR
+# SIDEBAR – ONLY RISK + TOGGLE
 # -------------------------------------------------
 with st.sidebar:
-    st.markdown("### ⚙️ Control Panel")
+    st.markdown('<div class="gg-sidebar-title">GOLD GLADIATOR</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="gg-sidebar-sub">Private intraday execution console. '
+        'Live MT5 wiring will feed this panel later.</div>',
+        unsafe_allow_html=True,
+    )
+    st.markdown("---")
 
-    # ONLY risk slider (0.25 → 10%)
+    engine_on = st.toggle("Execution engine active", value=False)
+
     risk_pct = st.slider(
         "Risk per trade (%)",
         min_value=0.25,
         max_value=10.0,
         step=0.25,
         value=1.0,
+        help="Sizing parameter the engine will use once it is connected to MT5.",
     )
 
     st.markdown("---")
-    st.markdown("##### Backtest data (optional)")
-    uploaded_file = st.file_uploader(
-        "Upload M5 CSV exported from MT5",
-        type=["csv"],
-        help="Raw time, open, high, low, close, tick_volume from MT5. Used for prototype stats only.",
+    st.markdown(
+        '<span class="gg-sidebar-sub">'
+        'Sidebar will later hold broker, account, and symbol selectors. '
+        'For now this is a visual shell only.'
+        "</span>",
+        unsafe_allow_html=True,
     )
 
 # -------------------------------------------------
 # HEADER
 # -------------------------------------------------
-st.markdown("## 🥇 GOLD GLADIATOR")
-st.markdown(
-    "<span style='color:rgba(255,255,255,0.75);font-size:0.9rem;'>"
-    "Intraday performance console for your private execution engine."
-    "</span>",
-    unsafe_allow_html=True,
-)
+col_title, col_chip = st.columns([3, 1])
+
+with col_title:
+    st.markdown(
+        "### 🥇 Gold Gladiator",
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        "<span style='color:rgba(255,255,255,0.72);font-size:0.9rem;'>"
+        "Intraday AI execution surface for your New York / London day-trading system."
+        "</span>",
+        unsafe_allow_html=True,
+    )
+
+with col_chip:
+    chip_text = "ENGINE • STANDBY"
+    if engine_on:
+        chip_text = "ENGINE • ARMED"
+    st.markdown(
+        f"<div style='text-align:right; margin-top:0.35rem;'><span class='accent-chip'>{chip_text}</span></div>",
+        unsafe_allow_html=True,
+    )
+
 st.markdown("")
 
-stats = None
-df_prices = None
-
 # -------------------------------------------------
-# LOAD DATA + RUN PLACEHOLDER ENGINE
-# -------------------------------------------------
-if uploaded_file is not None:
-    df_prices, error_msg = load_mt5_csv(uploaded_file)
-
-    if error_msg:
-        st.error(error_msg)
-    else:
-        stats = simple_backtest(df_prices, risk_pct=risk_pct, rr_multiple=4.0)
-
-# -------------------------------------------------
-# TOP METRIC STRIP (4 CARDS)
+# TOP METRIC STRIP (4 CARDS, STATIC FOR NOW)
 # -------------------------------------------------
 m1, m2, m3, m4 = st.columns(4)
 
 
-def metric_card(col, label: str, value: str, sub: str = ""):
+def metric_card(col, label, value, sub):
     with col:
         st.markdown(
             f"""
@@ -222,48 +202,37 @@ def metric_card(col, label: str, value: str, sub: str = ""):
         )
 
 
-bal_val = "--"
-pl_val = "--"
-wr_val = "--"
-
-if stats:
-    wr_val = f"{stats['winrate']:.1f}%"
-    pl_val = f"{stats['total_R']:.1f} R"
-
 metric_card(
     m1,
     "ACCOUNT BALANCE",
-    bal_val,
-    "Live equity will show once MT5 is connected.",
+    "—",
+    "Will display live MT5 equity once linked.",
 )
-
 metric_card(
     m2,
     "NET P/L (SESSION)",
-    pl_val,
-    "Prototype: total R from uploaded dataset.",
+    "—",
+    "Realized P/L from today’s executions.",
 )
-
 metric_card(
     m3,
     "WIN RATE",
-    wr_val,
-    "Based on completed trades found in dataset.",
+    "—",
+    "Rolling win-rate over last 20–50 trades.",
 )
-
 metric_card(
     m4,
     "RISK / TRADE",
     f"{risk_pct:.2f}%",
-    "Configured in the control panel.",
+    "User-defined risk parameter.",
 )
 
 st.markdown("")
 
 # -------------------------------------------------
-# MIDDLE ROW: EQUITY / PERFORMANCE + SESSION SUMMARY
+# MIDDLE: EQUITY / PERFORMANCE + ENGINE STATUS
 # -------------------------------------------------
-left, right = st.columns([2.2, 1.3])
+left, right = st.columns([2.2, 1.0])
 
 with left:
     st.markdown(
@@ -272,66 +241,80 @@ with left:
     )
     st.markdown('<div class="block-card">', unsafe_allow_html=True)
 
-    if stats and stats["total_trades"] > 0:
-        # Dummy cumulative R curve so it looks like a real equity chart
-        results = [1 if i < stats["wins"] else -1 for i in range(stats["total_trades"])]
-        cum = pd.Series(results).cumsum()
-        cum.index.name = "Trade #"
-        st.line_chart(cum)
-        st.caption("Prototype cumulative R curve (engine logic will be replaced by your NY-window model).")
-    else:
-        st.caption(
-            "Upload a CSV in the sidebar to generate a prototype equity curve. "
-            "Live MT5-driven equity will sit here once the execution engine is wired in."
-        )
+    # Placeholder equity curve so page is not empty
+    # (Replace with real live / historical equity once MT5 is wired)
+    horizon = 60  # last 60 bars / trades
+    idx = [datetime.now() - timedelta(minutes=5 * i) for i in range(horizon)][::-1]
+    equity = pd.DataFrame(
+        {
+            "Equity": [100_000 + i * 50 for i in range(horizon)]
+        },
+        index=idx,
+    )
+    st.line_chart(equity)
+
+    st.markdown(
+        "<div class='gg-footer'>"
+        "Chart currently displays a static mock equity line. "
+        "When the execution engine is connected, this will track real account equity or R-multiple curve."
+        "</div>",
+        unsafe_allow_html=True,
+    )
 
     st.markdown("</div>", unsafe_allow_html=True)
 
 with right:
     st.markdown(
-        '<div class="section-title">SESSION SUMMARY</div>',
+        '<div class="section-title">ENGINE OVERVIEW</div>',
         unsafe_allow_html=True,
     )
     st.markdown('<div class="block-card">', unsafe_allow_html=True)
 
-    if stats:
-        st.write(
-            {
-                "Trades": stats["total_trades"],
-                "Wins": stats["wins"],
-                "Losses": stats["losses"],
-            }
-        )
-    else:
-        st.write(
-            "No session data yet. Once the live execution engine is connected to MT5, "
-            "this block will show realtime session stats."
-        )
+    status = "ONLINE • ARMED" if engine_on else "OFFLINE • STANDBY"
+    color = "#37ff8b" if engine_on else "#ffb347"
+
+    st.markdown(
+        f"""
+        <div style="font-size:0.85rem; color:rgba(255,255,255,0.72);">
+          <span style="font-size:0.8rem; letter-spacing:0.16em; text-transform:uppercase; color:rgba(255,255,255,0.6);">
+            EXECUTION STATUS
+          </span><br/>
+          <span style="font-size:1.0rem; font-weight:600; color:{color};">{status}</span>
+          <br/><br/>
+          <span style="font-size:0.8rem; color:rgba(255,255,255,0.6);">
+            • Reads higher-timeframe structure outside session.<br/>
+            • Hunts manipulation into liquidity during your NY / London windows.<br/>
+            • Executes using your configured risk % and internal R-targets.<br/>
+          </span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     st.markdown("</div>", unsafe_allow_html=True)
 
 # -------------------------------------------------
-# BOTTOM: RAW SNAPSHOT (DEBUG STYLE)
+# BOTTOM: POSITIONS / RECENT ORDERS GRID (STATIC MOCK)
 # -------------------------------------------------
 st.markdown(
-    '<div class="section-title">RAW ENGINE SNAPSHOT</div>',
+    '<div class="section-title">OPEN / RECENT POSITIONS</div>',
     unsafe_allow_html=True,
 )
-st.markdown('<div class="block-card">', unsafe_allow_html=True)
+st.markdown('<div class="block-card positions-wrapper">', unsafe_allow_html=True)
 
-if stats:
-    st.json(
-        {
-            "total_trades": stats["total_trades"],
-            "wins": stats["wins"],
-            "losses": stats["losses"],
-            "winrate_pct": round(stats["winrate"], 2),
-            "total_R": round(stats["total_R"], 2),
-        }
-    )
-else:
-    st.caption(
-        "Waiting for data. Upload historical M5 data or (later) plug in the live MT5 backend."
-    )
+# Static sample table – replace later with live positions from MT5
+positions_df = pd.DataFrame(
+    [
+        ["XAUUSD", "BUY", "NY", "Core Setup v1", "—", "—", "Awaiting engine"],
+        ["XAUUSD", "SELL", "LONDON", "Core Setup v1", "—", "—", "Awaiting engine"],
+    ],
+    columns=["Symbol", "Direction", "Session", "Tag", "Entry", "P/L", "Status"],
+)
+
+st.dataframe(
+    positions_df,
+    hide_index=True,
+    use_container_width=True,
+)
 
 st.markdown("</div>", unsafe_allow_html=True)
