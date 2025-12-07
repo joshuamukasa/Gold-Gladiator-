@@ -6,24 +6,30 @@ from datetime import datetime
 # GOLD GLADIATOR – LIVE UI
 # -----------------------------
 
-st.set_page_config(page_title="Gold Gladiator AI", layout="wide")
+st.set_page_config(page_title="Gold Gladiator", layout="wide")
 
-st.title("🥇 Gold Gladiator – ICT 15M/5M Confirmation Engine")
+# Main title / hero section (no ICT / 15M/5M wording)
+st.title("🏆 Gold Gladiator")
 
-st.markdown("""
-This dashboard displays **live trade setups** based on:
+st.subheader("Live Day-Trading Performance Dashboard")
 
-• 15/5 Minute Engulfing Confirmation  
-• Break of Structure (BOS)  
-• Manipulation + Displacement logic  
-• STRICT filtering only (no auto trading)
+st.markdown(
+    """
+---
 
-This version:
-✅ Runs in the cloud  
-✅ Can connect to MT5 data later  
-✅ Shows wins/losses & live statistics  
-✅ Allows public subscribers to view results
-""")
+This dashboard lets you:
+
+- Monitor your strategy’s live setups  
+- Track wins, losses and overall performance  
+- View intraday behaviour across different sessions  
+
+> **Note:** Signals are for observation and research only.  
+> Execution always stays 100% manual.
+
+---
+"""
+)
+
 
 # ----------------------------------
 # USER CONTROLS
