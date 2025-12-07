@@ -11,16 +11,16 @@ st.set_page_config(
     layout="wide",
 )
 
-# ---------- GLOBAL CSS (INCLUDING TITLE FIX) ----------
+# ---------- GLOBAL CSS (NO STRATEGY TEXT, TITLE FIX) ----------
 st.markdown(
     """
 <style>
-/* Remove excess top padding so title is not halfway down */
+/* Pull content a bit higher but keep title visible */
 .block-container {
-    padding-top: 0.6rem !important;
+    padding-top: 0.8rem !important;
 }
 
-/* Tighten header margins so hero title sits near the top */
+/* Tighten header margins so titles sit close together */
 h1, h2, h3 {
     margin-top: 0rem !important;
     padding-top: 0rem !important;
@@ -62,12 +62,6 @@ body {
     color: #8c90a8;
 }
 
-/* Hero row */
-.gg-hero {
-    margin-top: -0.3rem !important;  /* pulls everything a bit higher */
-    margin-bottom: 0.7rem;
-}
-
 /* Section headings */
 .gg-section-title {
     font-size: 0.78rem;
@@ -88,7 +82,7 @@ body {
     height: 260px;
 }
 
-/* Engine overview bullet list */
+/* Bullet list in risk profile */
 .gg-bullets ul {
     padding-left: 1.1rem;
     margin-bottom: 0.3rem;
@@ -138,26 +132,20 @@ st.sidebar.markdown(
 
 # ---------- MAIN LAYOUT ----------
 
-# Fake placeholders for now – to be wired to MT5 later
-account_balance = None   # when live: float or Decimal
-session_pl = None        # realized P/L for current session
-win_rate = None          # last N trades
+# Future live values – placeholders for now
+account_balance = None
+session_pl = None
+win_rate = None
 
-# Hero section
-with st.container():
-    st.markdown(
-        """
-<div class="gg-hero">
-  <h1 style="font-size:1.4rem; font-weight:700; color:#ffffff; margin-bottom:0.15rem;">
-    🥇 GOLD GLADIATOR
-  </h1>
-  <p style="font-size:0.85rem; color:#a5a8c4; margin-bottom:0.2rem;">
-    Intraday AI execution surface for your New York / London day-trading system.
-  </p>
-</div>
-""",
-        unsafe_allow_html=True,
-    )
+# Title and subtitle (simple Streamlit headings so they ALWAYS show)
+st.markdown("## 🥇 GOLD GLADIATOR")
+st.markdown(
+    "<span style='font-size:0.9rem; color:#a5a8c4;'>"
+    "Intraday AI execution surface for your New York / London day-trading system."
+    "</span>",
+    unsafe_allow_html=True,
+)
+st.markdown("---")
 
 # ----- Top metric cards -----
 col1, col2, col3, col4 = st.columns(4)
@@ -213,14 +201,13 @@ with col4:
 
 st.markdown("")  # small vertical space
 
-# ----- Middle row: Equity curve + Engine overview -----
+# ----- Middle row: Equity curve + Risk profile (NO STRATEGY EXPLANATION) -----
 left, right = st.columns([2.2, 1.3])
 
-# Simple placeholder equity curve using a dummy series
 def demo_equity_curve(n_points: int = 60):
+    """Simple placeholder equity curve until MT5 is wired in."""
     base = 100_000
     times = [datetime.utcnow() - timedelta(minutes=5 * (n_points - i)) for i in range(n_points)]
-    # small synthetic fluctuations
     pnl = pd.Series([0])
     for i in range(1, n_points):
         pnl.loc[i] = pnl.loc[i - 1] + 100 * ((-1) ** i) * 0.3
@@ -250,12 +237,12 @@ with right:
     st.markdown(
         f"""
 <div class="gg-card">
-  <div class="gg-section-title">ENGINE OVERVIEW</div>
+  <div class="gg-section-title">RISK PROFILE</div>
   <div class="gg-divider"></div>
 
   <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.6rem;">
     <div>
-      <div style="font-size:0.78rem; color:#8f93b5; text-transform:uppercase; letter-spacing:0.13em;">EXECUTION STATUS</div>
+      <div style="font-size:0.78rem; color:#8f93b5; text-transform:uppercase; letter-spacing:0.13em;">ENGINE STATUS</div>
       <div style="font-size:0.95rem; font-weight:700; color:{status_color}; margin-top:0.08rem;">
         {status_text}
       </div>
@@ -267,26 +254,26 @@ with right:
 
   <div class="gg-bullets">
     <ul>
-      <li>Reads overall structure and key liquidity levels before your time windows.</li>
-      <li>Tracks manipulation into liquidity during NY / London intraday periods.</li>
-      <li>Uses confirmations on your execution timeframe for entries & exits.</li>
-      <li>Position sizing driven entirely by your configured risk percentage.</li>
+      <li>Daily loss cap: <strong>TBD (configure in backend)</strong></li>
+      <li>Max trades per day: <strong>TBD</strong></li>
+      <li>Max concurrent positions: <strong>TBD</strong></li>
+      <li>Execution mode: <strong>Automated, rules kept private</strong></li>
     </ul>
   </div>
 
   <div style="font-size:0.72rem; color:#777b97; margin-top:0.35rem;">
-    Backend trade-logging + MT5 link will write live stats into this panel in the next phase.
+    This panel will later show real-time risk flags, drawdown and margin usage fed from MT5.
   </div>
 </div>
 """,
         unsafe_allow_html=True,
     )
 
-# ----- Bottom spacer / future sections -----
+# ----- Bottom note -----
 st.markdown("")
 st.markdown(
     "<div style='font-size:0.72rem; color:#656981; margin-top:0.3rem;'>"
-    "Prototype UI only. Next step: wire MT5 data + full execution engine using your time-window strategy."
+    "Prototype UI only. Next step: wire MT5 data + full execution engine using your private time-window strategy."
     "</div>",
     unsafe_allow_html=True,
 )
