@@ -1,5 +1,5 @@
 # ======================================================
-# GOLD GLADIATOR – STREAMLIT DASHBOARD (WITH CSV FIX)
+# GOLD GLADIATOR – STREAMLIT DASHBOARD (CSV + HEADER FIX)
 # ======================================================
 
 import streamlit as st
@@ -79,7 +79,7 @@ with st.sidebar:
     uploaded = st.file_uploader(
         "Upload M5 CSV from MT5",
         type=["csv"],
-        help="Export from MT5: Time, Open, High, Low, Close, Volume/Tick Volume.",
+        help="Export from MT5: Time, Open, High, Low, Close, Tick volume, Volume, Spread.",
     )
 
     st.markdown("---")
@@ -90,7 +90,7 @@ with st.sidebar:
 # ------------------------------------------------------
 
 st.markdown('<div class="gg-title">GOLD GLADIATOR</div>', unsafe_allow_html=True)
-st.markdown(
+st.marknow = st.markdown(
     '<div class="gg-sub">Intraday performance console for your private execution engine.</div>',
     unsafe_allow_html=True,
 )
@@ -98,33 +98,59 @@ st.markdown(
 st.markdown("---")
 
 # ------------------------------------------------------
-# SAFE CSV LOADER (FIXES UTF ERRORS FROM MT5)
+# SAFE CSV LOADER (ENCODING + MISSING HEADER FIX)
 # ------------------------------------------------------
+
+def _has_time_column(df: pd.DataFrame) -> bool:
+    cols = [str(c).strip().lower() for c in df.columns]
+    return any(c in ["time", "date", "datetime"] for c in cols)
+
 
 def load_mt5_csv(file) -> pd.DataFrame:
     """
-    Try multiple encodings so MT5 exports don't crash the app.
+    Try multiple encodings. If no 'time' column is found, assume the CSV
+    has NO HEADER and re-read with default MT5-style column names.
     """
     last_err = None
-    for enc in ["utf-16", "utf-8", "cp1252"]:
+    encodings = ["utf-16", "utf-8", "cp1252"]
+
+    for enc in encodings:
         try:
-            file.seek(0)  # reset pointer each attempt
+            # First attempt: assume header row is present
+            file.seek(0)
             df = pd.read_csv(file, encoding=enc)
+
+            if not _has_time_column(df):
+                # Probably header-less MT5 export (first row became header).
+                # Re-read with header=None and assign default names.
+                file.seek(0)
+                df = pd.read_csv(file, encoding=enc, header=None)
+
+                ncols = df.shape[1]
+                base_names = ["time", "open", "high", "low", "close",
+                              "tick_volume", "volume", "spread"]
+                names = base_names[:ncols]
+                df.columns = names
+
             return df
+
         except Exception as e:
             last_err = e
             continue
+
+    # If all encodings fail, raise the last error
     raise last_err if last_err is not None else ValueError("Could not decode CSV file.")
 
 
 def normalize_ohlcv(df_raw: pd.DataFrame) -> pd.DataFrame:
     """
-    Tries to standardize to columns: time index + open, high, low, close, volume.
+    Standardize to: time index + open, high, low, close, volume.
+    Works whether columns came from MT5 headers or were assigned above.
     """
     df = df_raw.copy()
     df.columns = [str(c).strip().lower() for c in df.columns]
 
-    # find time column
+    # --- locate time column ---
     time_col = None
     for c in ["time", "date", "datetime"]:
         if c in df.columns:
@@ -146,10 +172,11 @@ def normalize_ohlcv(df_raw: pd.DataFrame) -> pd.DataFrame:
     h_col = pick("high", "h")
     l_col = pick("low", "l")
     c_col = pick("close", "c")
-    v_col = pick("tick_volume", "tickvolume", "volume", "vol")
+    v_col = pick("tick_volume", "volume", "vol", "tickvolume")
 
     missing = [name for name, col in
-               [("open", o_col), ("high", h_col), ("low", l_col), ("close", c_col), ("volume", v_col)]
+               [("open", o_col), ("high", h_col), ("low", l_col),
+                ("close", c_col), ("volume", v_col)]
                if col is None]
     if missing:
         raise ValueError(f"Missing OHLCV columns: {missing}. Columns: {list(df.columns)}")
@@ -201,7 +228,7 @@ if uploaded is not None:
         else:
             winrate_display = "--"
 
-        # simple net R estimate: wins 4R, losses -1R (since TP=4R, SL=1R in engine)
+        # simple net R estimate: wins 4R, losses -1R (TP=4R, SL=1R)
         net_R = stats["wins"] * 4.0 - stats["losses"] * 1.0
         net_pl_display = f"{net_R:.1f}R"
 
