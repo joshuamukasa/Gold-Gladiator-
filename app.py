@@ -11,7 +11,7 @@ st.set_page_config(
     layout="wide",
 )
 
-# ---------- GLOBAL CSS (NO STRATEGY TEXT, TITLE FIX) ----------
+# ---------- GLOBAL CSS ----------
 st.markdown(
     """
 <style>
@@ -82,7 +82,7 @@ body {
     height: 260px;
 }
 
-/* Bullet list in risk profile */
+/* Bullet list in risk panel */
 .gg-bullets ul {
     padding-left: 1.1rem;
     margin-bottom: 0.3rem;
@@ -137,7 +137,7 @@ account_balance = None
 session_pl = None
 win_rate = None
 
-# Title and subtitle (simple Streamlit headings so they ALWAYS show)
+# Title + subtitle
 st.markdown("## 🥇 GOLD GLADIATOR")
 st.markdown(
     "<span style='font-size:0.9rem; color:#a5a8c4;'>"
@@ -201,7 +201,7 @@ with col4:
 
 st.markdown("")  # small vertical space
 
-# ----- Middle row: Equity curve + Risk profile (NO STRATEGY EXPLANATION) -----
+# ----- Middle row: Equity curve + Risk/Performance snapshot -----
 left, right = st.columns([2.2, 1.3])
 
 def demo_equity_curve(n_points: int = 60):
@@ -231,13 +231,14 @@ with left:
     st.markdown("</div>", unsafe_allow_html=True)
 
 with right:
+    # Status text only, no strategy details
     status_text = "ONLINE" if engine_active else "OFFLINE – STANDBY"
     status_color = "#11c76f" if engine_active else "#ffb347"
 
     st.markdown(
         f"""
 <div class="gg-card">
-  <div class="gg-section-title">RISK PROFILE</div>
+  <div class="gg-section-title">RISK & PERFORMANCE SNAPSHOT</div>
   <div class="gg-divider"></div>
 
   <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.6rem;">
@@ -254,15 +255,15 @@ with right:
 
   <div class="gg-bullets">
     <ul>
-      <li>Daily loss cap: <strong>TBD (configure in backend)</strong></li>
-      <li>Max trades per day: <strong>TBD</strong></li>
+      <li>Trades taken this session: <strong>TBD</strong></li>
+      <li>Session net P/L (R): <strong>TBD</strong></li>
+      <li>Max intraday drawdown (R): <strong>TBD</strong></li>
       <li>Max concurrent positions: <strong>TBD</strong></li>
-      <li>Execution mode: <strong>Automated, rules kept private</strong></li>
     </ul>
   </div>
 
   <div style="font-size:0.72rem; color:#777b97; margin-top:0.35rem;">
-    This panel will later show real-time risk flags, drawdown and margin usage fed from MT5.
+    This panel will later display live risk & performance metrics streamed from MT5, without revealing internal logic.
   </div>
 </div>
 """,
