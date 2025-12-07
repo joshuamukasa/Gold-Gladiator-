@@ -2,273 +2,270 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 
-# ============================
-#  GOLD GLADIATOR  –  DASHBOARD
-# ============================
+# =========================================
+# GOLD GLADIATOR – CLIENT DASHBOARD (UI)
+# =========================================
 
 st.set_page_config(
     page_title="Gold Gladiator",
     layout="wide",
-    initial_sidebar_state="expanded",
 )
 
-# ---------- GLOBAL STYLE ----------
+# ---------- BASIC STYLING (premium dark look) ----------
 st.markdown(
     """
     <style>
-    .block-container {
-        padding-top: 1.5rem;
-        padding-bottom: 1.5rem;
-        max-width: 1200px;
-    }
-    /* main background */
-    .stApp {
-        background: radial-gradient(circle at top left, #111827 0, #020617 40%, #020617 100%);
-        color: #e5e7eb;
-        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    }
-    /* generic card style */
-    .gg-card {
-        border-radius: 14px;
-        padding: 1rem 1.25rem;
-        background: linear-gradient(145deg, #020617, #020617);
-        border: 1px solid rgba(148, 163, 184, 0.23);
-        box-shadow: 0 18px 40px rgba(0,0,0,0.65);
-    }
-    .gg-pill {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.4rem;
-        padding: 0.25rem 0.75rem;
-        border-radius: 999px;
-        font-size: 0.75rem;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
-        background: linear-gradient(90deg, #22c55e33, #22c55e10);
-        border: 1px solid #22c55e55;
-        color: #bbf7d0;
-    }
-    .gg-metric-label {
-        font-size: 0.75rem;
-        text-transform: uppercase;
-        color: #9ca3af;
-        letter-spacing: 0.12em;
-        margin-bottom: 0.25rem;
-    }
-    .gg-metric-value {
-        font-size: 1.4rem;
-        font-weight: 600;
-        color: #f9fafb;
-    }
-    .gg-metric-sub {
-        font-size: 0.75rem;
-        color: #6b7280;
-        margin-top: 0.15rem;
-    }
-    hr.gg-divider {
-        border: none;
-        border-top: 1px solid rgba(31, 41, 55, 1);
-        margin: 1.25rem 0 1.2rem 0;
-    }
+        .main {
+            background: radial-gradient(circle at top left, #151821, #05060a);
+            color: #f5f5f7;
+        }
+        .block-container {
+            padding-top: 1rem;
+            padding-bottom: 1rem;
+        }
+        /* hide default footer & menu */
+        #MainMenu {visibility: hidden;}
+        footer {visibility: hidden;}
+
+        /* metric cards */
+        .gg-card {
+            background: linear-gradient(145deg, #141824, #0a0b11);
+            border-radius: 14px;
+            padding: 14px 18px;
+            box-shadow: 0 0 0 1px rgba(255,255,255,0.02),
+                        0 18px 35px rgba(0,0,0,0.65);
+        }
+        .gg-label {
+            font-size: 0.78rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: #9da3b4;
+        }
+        .gg-value {
+            font-size: 1.4rem;
+            font-weight: 600;
+            color: #f5f5f7;
+        }
+        .gg-sub {
+            font-size: 0.7rem;
+            color: #7d8292;
+        }
+
+        /* section titles */
+        .gg-section-title {
+            font-size: 1.0rem;
+            font-weight: 600;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: #e5e7f0;
+        }
+        .gg-section-sub {
+            font-size: 0.78rem;
+            color: #8b90a1;
+        }
+
+        .gg-pill-green {
+            display:inline-block;
+            padding: 2px 10px;
+            border-radius: 999px;
+            background: rgba(46, 204, 113, 0.12);
+            color: #2ecc71;
+            font-size: 0.7rem;
+        }
+        .gg-pill-red {
+            display:inline-block;
+            padding: 2px 10px;
+            border-radius: 999px;
+            background: rgba(231, 76, 60, 0.12);
+            color: #e74c3c;
+            font-size: 0.7rem;
+        }
+
+        /* tables */
+        .dataframe tbody tr:hover {
+            background-color: rgba(255,255,255,0.03);
+        }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-# ============= SIDEBAR =============
+# ================= SIDEBAR CONTROLS =================
 with st.sidebar:
-    st.markdown("### Control Panel")
+    st.markdown("### ⚙️ Control Panel")
 
-    # user-defined risk and reward – only visual for now
-    risk_per_trade = st.slider(
-        "Risk per trade (%)",
-        min_value=0.25,
-        max_value=5.0,
-        value=2.0,
-        step=0.25,
-    )
+    symbol = st.selectbox("Symbol", ["XAUUSD"], index=0)
+    timeframe = st.selectbox("Execution timeframe", ["M5"], index=0)
 
-    tp_multiple = st.slider(
-        "Target multiple (R)",
-        min_value=1.0,
-        max_value=10.0,
-        value=4.0,
-        step=0.5,
-    )
+    risk_pct = st.slider("Configured risk per trade (%)",
+                         min_value=0.25, max_value=5.0, step=0.25, value=1.0)
+
+    engine_state = st.toggle("Gold Gladiator engine", value=True)
 
     st.markdown("---")
-
-    st.markdown(
-        """
-        **Engine mode:**  
-        Designed for *fully automated* execution from the cloud.  
-        This dashboard prototype focuses on monitoring, not live trading yet.
-        """
+    st.caption(
+        "Prototype dashboard UI. Live execution + MT5 link will be wired into the "
+        "engine later – this screen is focused on **monitoring performance**."
     )
 
-# ============= HEADER =============
+# ================= HEADER =================
+st.markdown("## 🦾 GOLD GLADIATOR")
+
 st.markdown(
     """
-    <div class="gg-card" style="margin-bottom: 1.2rem;">
-      <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:1.2rem;">
-        <div>
-          <div class="gg-pill">
-            <span>🛡️</span>
-            <span>Gold Gladiator</span>
-          </div>
-          <h1 style="margin:0.55rem 0 0.15rem 0; font-size:1.8rem; font-weight:700; color:#f9fafb;">
-            Live Strategy Engine Dashboard
-          </h1>
-          <p style="margin:0.25rem 0 0 0; font-size:0.9rem; color:#9ca3af; max-width:540px;">
-            Intraday system built around liquidity grabs, structural breaks and price-action confirmation
-            inside predefined time windows.
-          </p>
-        </div>
-      </div>
-    </div>
+    <span style="font-size:0.9rem;color:#a1a6b8;">
+    Live intraday performance monitor for your private day-trading engine.
+    </span>
     """,
     unsafe_allow_html=True,
 )
 
-# ============= TOP METRICS =============
-# NOTE: everything is neutral / zero until connected to real trade data.
-stats = {
-    "balance": None,
-    "net_pl_week": None,
-    "win_rate": None,
-    "risk_per_trade": risk_per_trade,
-}
+st.markdown("")
 
-col1, col2, col3, col4 = st.columns(4)
+# ================= TOP STATS STRIP =================
+col_a, col_b, col_c, col_d = st.columns(4)
 
-with col1:
+# NOTE: these are placeholders until we plug in real trade history.
+# To avoid fake numbers, keep them neutral.
+with col_a:
     st.markdown(
-        f"""
+        """
         <div class="gg-card">
-          <div class="gg-metric-label">Balance</div>
-          <div class="gg-metric-value">{'—' if stats['balance'] is None else f"${stats['balance']:,.2f}"}</div>
-          <div class="gg-metric-sub">Will display from linked MT5 account</div>
+            <div class="gg-label">Account Balance</div>
+            <div class="gg-value">--</div>
+            <div class="gg-sub">Waiting for MT5 connection</div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-with col2:
+with col_b:
     st.markdown(
-        f"""
+        """
         <div class="gg-card">
-          <div class="gg-metric-label">Net P/L (This Week)</div>
-          <div class="gg-metric-value">{'—' if stats['net_pl_week'] is None else f"${stats['net_pl_week']:,.2f}"}</div>
-          <div class="gg-metric-sub">Closed trades only – coming from live engine</div>
+            <div class="gg-label">Net P/L (This Week)</div>
+            <div class="gg-value">--</div>
+            <div class="gg-sub">Closed trades only</div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-with col3:
-    winrate_display = "—" if stats["win_rate"] is None else f"{stats['win_rate']:.1f}%"
+with col_c:
+    # we can show live winrate from backend later; for now neutral
     st.markdown(
-        f"""
+        """
         <div class="gg-card">
-          <div class="gg-metric-label">Win Rate</div>
-          <div class="gg-metric-value">{winrate_display}</div>
-          <div class="gg-metric-sub">Rolling sample of last N trades</div>
+            <div class="gg-label">Win Rate</div>
+            <div class="gg-value">--</div>
+            <div class="gg-sub">Based on last 20 completed trades</div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-with col4:
+with col_d:
     st.markdown(
         f"""
         <div class="gg-card">
-          <div class="gg-metric-label">Configured Risk / Trade</div>
-          <div class="gg-metric-value">{risk_per_trade:.2f}%</div>
-          <div class="gg-metric-sub">User-defined – applied by execution engine</div>
+            <div class="gg-label">Configured Risk / Trade</div>
+            <div class="gg-value">{risk_pct:.2f}%</div>
+            <div class="gg-sub">Visual setting – execution engine decides sizing</div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-st.markdown('<hr class="gg-divider">', unsafe_allow_html=True)
+st.markdown("")
 
-# ============= LIVE SETUP FEED + ENGINE PROFILE =============
-left, right = st.columns([1.7, 1.3])
+# ================= MAIN BODY =================
+left, right = st.columns([1.4, 1.0])
 
+# ------- LEFT: LIVE SETUP FEED -------
 with left:
     st.markdown(
-        """
-        <div class="gg-card">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.6rem;">
-            <div style="font-size:1.1rem; font-weight:600;">Live Setup Feed</div>
-          </div>
-        """,
+        '<div class="gg-section-title">Live Setup Feed</div>',
         unsafe_allow_html=True,
     )
+    st.markdown(
+        '<div class="gg-section-sub">Stream of current intraday opportunities detected by the engine.</div>',
+        unsafe_allow_html=True,
+    )
+    st.markdown("")
 
-    # placeholder – no fake rows, just empty table until engine pushes data
-    columns = ["Time (UTC)", "Direction", "Setup Tag", "Status", "Planned TP (R)"]
-    live_setups = pd.DataFrame(columns=columns)
+    # Placeholder row – later this will be real-time from backend / MT5 logs
+    now_str = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
 
-    if live_setups.empty:
-        st.info(
-            "No live setups detected yet. "
-            "When the Gold Gladiator engine is connected, new opportunities will stream here in real time."
-        )
-    else:
-        st.dataframe(
-            live_setups.style.hide(axis="index"),
-            use_container_width=True,
-        )
+    setups_df = pd.DataFrame(
+        [
+            {
+                "Time (UTC)": now_str,
+                "Direction": "BUY",
+                "Tag": "Core Setup v1",
+                "Status": "Waiting for confirmation",
+                "Est. Target (R)": "4R+",
+            }
+        ]
+    )
 
-    st.markdown("</div>", unsafe_allow_html=True)
+    st.dataframe(
+        setups_df,
+        use_container_width=True,
+        hide_index=True,
+    )
 
+# ------- RIGHT: ENGINE STATUS + SNAPSHOT -------
 with right:
     st.markdown(
-        """
+        '<div class="gg-section-title">Engine Overview</div>',
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        '<div class="gg-section-sub">High-level status of the Gold Gladiator engine.</div>',
+        unsafe_allow_html=True,
+    )
+    st.markdown("")
+
+    status_label = "Online" if engine_state else "Paused"
+
+    st.markdown(
+        f"""
         <div class="gg-card">
-          <div style="font-size:1.05rem; font-weight:600; margin-bottom:0.5rem;">
-            Engine Diagnostics
-          </div>
-          <div style="font-size:0.8rem; text-transform:uppercase; color:#9ca3af; letter-spacing:0.12em; margin-bottom:0.4rem;">
-            Strategy Profile
-          </div>
-          <ul style="font-size:0.9rem; color:#d1d5db; padding-left:1.1rem; margin-top:0;">
-            <li>Reads overall structure and key liquidity levels first (look left).</li>
-            <li>Waits for manipulation leg into liquidity inside predefined time windows.</li>
-            <li>Requires strong displacement away from that liquidity plus confirmation on the execution timeframe.</li>
-            <li>Entry and management are based on user-defined risk % and target R-multiple.</li>
-          </ul>
-          <div style="margin-top:0.8rem; font-size:0.8rem; color:#9ca3af;">
-            This dashboard is ready for a trade-logging backend.<br>
-            Once your execution engine saves trades, win-rate and P/L stats will be shown automatically.
-          </div>
+            <div class="gg-label">Connection</div>
+            <div class="gg-value" style="margin-bottom:4px;">{status_label}</div>
+            <div class="gg-sub">
+                Symbol: {symbol} · Execution TF: {timeframe}
+            </div>
+            <div style="margin-top:10px;">
+                <span class="gg-pill-green">Backend wiring: pending</span>
+            </div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-# ============= TRADE LOG PLACEHOLDER =============
-st.markdown('<hr class="gg-divider">', unsafe_allow_html=True)
+    st.markdown("")
+    st.markdown(
+        '<div class="gg-section-title">Session Snapshot</div>',
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        '<div class="gg-section-sub">Quick view of today\'s trade log once the engine starts saving data.</div>',
+        unsafe_allow_html=True,
+    )
 
-st.markdown(
-    """
-    <div class="gg-card">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
-        <div style="font-size:1.0rem; font-weight:600;">Recent Trades (log)</div>
-        <div style="font-size:0.8rem; color:#9ca3af;">Backend not wired yet – waiting for execution data</div>
-      </div>
-    """,
-    unsafe_allow_html=True,
+    # Empty performance placeholder – will be replaced with real charts
+    perf_df = pd.DataFrame(
+        {
+            "Metric": ["Trades Today", "Wins", "Losses", "Max Drawdown (R)", "Best Trade (R)"],
+            "Value": ["--", "--", "--", "--", "--"],
+        }
+    )
+    st.table(perf_df)
+
+# Footer hint (small)
+st.markdown("")
+st.caption(
+    "Next step: hook this UI to your real AI engine / MT5 trade log so balance, P/L, win rate "
+    "and setup feed are driven by live data instead of placeholders."
 )
-
-trade_log = pd.DataFrame(
-    columns=["Time (UTC)", "Direction", "Result (R)", "Comment"]
-)
-
-if trade_log.empty:
-    st.caption("When the AI is executing and logging trades, they will appear here.")
-else:
-    st.dataframe(trade_log.style.hide(axis="index"), use_container_width=True)
-
-st.markdown("</div>", unsafe_allow_html=True)
