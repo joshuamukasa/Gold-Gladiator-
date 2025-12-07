@@ -2,319 +2,291 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
 
-# -------------------------------------------------
-# PAGE CONFIG
-# -------------------------------------------------
+# --------------------------------------------------
+# GOLD GLADIATOR – EXECUTION DASHBOARD (UI SHELL)
+# --------------------------------------------------
+
 st.set_page_config(
-    page_title="Gold Gladiator • Execution Console",
-    page_icon="🥇",
+    page_title="Gold Gladiator",
     layout="wide",
 )
 
-# -------------------------------------------------
-# PREMIUM DARK UI (StakingAI-style)
-# -------------------------------------------------
+# ---------- GLOBAL CSS (INCLUDING TITLE FIX) ----------
 st.markdown(
     """
-    <style>
-        /* Global background */
-        .main {
-            background: radial-gradient(circle at top left, #1b1f2b, #050509 60%);
-        }
-        section[data-testid="stSidebar"] {
-            background: linear-gradient(180deg, #050509, #111320);
-            border-right: 1px solid rgba(255,255,255,0.08);
-        }
+<style>
+/* Remove excess top padding so title is not halfway down */
+.block-container {
+    padding-top: 0.6rem !important;
+}
 
-        /* Remove default top padding */
-        .block-container {
-            padding-top: 1.2rem;
-            padding-bottom: 1.2rem;
-        }
+/* Tighten header margins so hero title sits near the top */
+h1, h2, h3 {
+    margin-top: 0rem !important;
+    padding-top: 0rem !important;
+}
 
-        /* Sidebar title */
-        .gg-sidebar-title {
-            font-size: 1.1rem;
-            font-weight: 600;
-            letter-spacing: 0.12em;
-            text-transform: uppercase;
-            color: #f4f4f6;
-        }
-        .gg-sidebar-sub {
-            font-size: 0.72rem;
-            color: rgba(255,255,255,0.55);
-        }
+/* Base page background */
+body {
+    background: radial-gradient(circle at top left, #15161b 0, #050608 55%, #000000 100%) !important;
+}
 
-        /* Metric cards */
-        .metric-card {
-            padding: 0.9rem 1.1rem;
-            border-radius: 0.9rem;
-            background: radial-gradient(circle at top left, #232634, #0c0f18);
-            border: 1px solid rgba(255,255,255,0.06);
-            box-shadow: 0 14px 30px rgba(0,0,0,0.7);
-        }
-        .metric-label {
-            font-size: 0.75rem;
-            letter-spacing: 0.14em;
-            text-transform: uppercase;
-            color: rgba(255,255,255,0.65);
-        }
-        .metric-value {
-            font-size: 1.5rem;
-            font-weight: 600;
-            margin-top: 0.15rem;
-            color: #fdfdfd;
-        }
-        .metric-sub {
-            font-size: 0.7rem;
-            margin-top: 0.1rem;
-            color: rgba(255,255,255,0.5);
-        }
+/* Card look for top metrics & panels */
+.gg-card {
+    background: linear-gradient(135deg, #171821 0%, #101118 55%, #0b0c11 100%);
+    border-radius: 12px;
+    padding: 1.1rem 1.3rem;
+    border: 1px solid rgba(255, 255, 255, 0.04);
+    box-shadow: 0 14px 35px rgba(0, 0, 0, 0.65);
+}
 
-        /* Section titles */
-        .section-title {
-            font-size: 0.8rem;
-            letter-spacing: 0.18em;
-            text-transform: uppercase;
-            color: rgba(255,255,255,0.6);
-            margin: 0.4rem 0 0.3rem 0;
-        }
+/* Metric title */
+.gg-label {
+    font-size: 0.70rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #8f93b2;
+    margin-bottom: 0.3rem;
+}
 
-        /* Generic block card */
-        .block-card {
-            padding: 1rem 1.1rem;
-            border-radius: 0.9rem;
-            background: rgba(8,9,15,0.96);
-            border: 1px solid rgba(255,255,255,0.06);
-        }
+/* Metric main value */
+.gg-value {
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: #ffffff;
+}
 
-        /* Accent chip */
-        .accent-chip {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.4rem;
-            padding: 0.2rem 0.55rem;
-            border-radius: 999px;
-            background: linear-gradient(90deg, #ff8c32, #ffb347);
-            color: #050509;
-            font-size: 0.7rem;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.12em;
-        }
+/* Secondary text */
+.gg-sub {
+    font-size: 0.78rem;
+    color: #8c90a8;
+}
 
-        /* Positions table wrapper look */
-        .positions-wrapper {
-            border-radius: 0.6rem;
-            overflow: hidden;
-            border: 1px solid rgba(255,255,255,0.05);
-            background: rgba(5,6,12,0.9);
-        }
+/* Hero row */
+.gg-hero {
+    margin-top: -0.3rem !important;  /* pulls everything a bit higher */
+    margin-bottom: 0.7rem;
+}
 
-        /* Tiny footer text */
-        .gg-footer {
-            font-size: 0.65rem;
-            color: rgba(255,255,255,0.4);
-            margin-top: 0.6rem;
-        }
-    </style>
-    """,
+/* Section headings */
+.gg-section-title {
+    font-size: 0.78rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: #9ea3c7;
+    margin-bottom: 0.35rem;
+}
+
+/* Thin divider line */
+.gg-divider {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    margin: 0.35rem 0 0.75rem 0;
+}
+
+/* Equity chart container */
+.gg-chart-box {
+    height: 260px;
+}
+
+/* Engine overview bullet list */
+.gg-bullets ul {
+    padding-left: 1.1rem;
+    margin-bottom: 0.3rem;
+}
+.gg-bullets li {
+    font-size: 0.80rem;
+    color: #c4c7dd;
+    margin-bottom: 0.3rem;
+}
+
+/* Sidebar tweaks */
+[data-testid="stSidebar"] {
+    background: radial-gradient(circle at top left, #181924 0, #05060b 60%, #000000 100%);
+    border-right: 1px solid rgba(255, 255, 255, 0.04);
+}
+</style>
+""",
     unsafe_allow_html=True,
 )
 
-# -------------------------------------------------
-# SIDEBAR – ONLY RISK + TOGGLE
-# -------------------------------------------------
-with st.sidebar:
-    st.markdown('<div class="gg-sidebar-title">GOLD GLADIATOR</div>', unsafe_allow_html=True)
-    st.markdown(
-        '<div class="gg-sidebar-sub">Private intraday execution console. '
-        'Live MT5 wiring will feed this panel later.</div>',
-        unsafe_allow_html=True,
-    )
-    st.markdown("---")
+# ---------- SIDEBAR (CONTROL PANEL) ----------
 
-    engine_on = st.toggle("Execution engine active", value=False)
-
-    risk_pct = st.slider(
-        "Risk per trade (%)",
-        min_value=0.25,
-        max_value=10.0,
-        step=0.25,
-        value=1.0,
-        help="Sizing parameter the engine will use once it is connected to MT5.",
-    )
-
-    st.markdown("---")
-    st.markdown(
-        '<span class="gg-sidebar-sub">'
-        'Sidebar will later hold broker, account, and symbol selectors. '
-        'For now this is a visual shell only.'
-        "</span>",
-        unsafe_allow_html=True,
-    )
-
-# -------------------------------------------------
-# HEADER
-# -------------------------------------------------
-col_title, col_chip = st.columns([3, 1])
-
-with col_title:
-    st.markdown(
-        "### 🥇 Gold Gladiator",
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        "<span style='color:rgba(255,255,255,0.72);font-size:0.9rem;'>"
-        "Intraday AI execution surface for your New York / London day-trading system."
-        "</span>",
-        unsafe_allow_html=True,
-    )
-
-with col_chip:
-    chip_text = "ENGINE • STANDBY"
-    if engine_on:
-        chip_text = "ENGINE • ARMED"
-    st.markdown(
-        f"<div style='text-align:right; margin-top:0.35rem;'><span class='accent-chip'>{chip_text}</span></div>",
-        unsafe_allow_html=True,
-    )
-
-st.markdown("")
-
-# -------------------------------------------------
-# TOP METRIC STRIP (4 CARDS, STATIC FOR NOW)
-# -------------------------------------------------
-m1, m2, m3, m4 = st.columns(4)
-
-
-def metric_card(col, label, value, sub):
-    with col:
-        st.markdown(
-            f"""
-            <div class="metric-card">
-              <div class="metric-label">{label}</div>
-              <div class="metric-value">{value}</div>
-              <div class="metric-sub">{sub}</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-
-metric_card(
-    m1,
-    "ACCOUNT BALANCE",
-    "—",
-    "Will display live MT5 equity once linked.",
-)
-metric_card(
-    m2,
-    "NET P/L (SESSION)",
-    "—",
-    "Realized P/L from today’s executions.",
-)
-metric_card(
-    m3,
-    "WIN RATE",
-    "—",
-    "Rolling win-rate over last 20–50 trades.",
-)
-metric_card(
-    m4,
-    "RISK / TRADE",
-    f"{risk_pct:.2f}%",
-    "User-defined risk parameter.",
+st.sidebar.markdown("### GOLD GLADIATOR")
+st.sidebar.markdown(
+    "<span style='font-size:0.8rem; color:#9da0bb;'>"
+    "Private intraday execution console. Live MT5 wiring will feed this panel later."
+    "</span>",
+    unsafe_allow_html=True,
 )
 
-st.markdown("")
+engine_active = st.sidebar.toggle("Execution engine active", value=False)
 
-# -------------------------------------------------
-# MIDDLE: EQUITY / PERFORMANCE + ENGINE STATUS
-# -------------------------------------------------
-left, right = st.columns([2.2, 1.0])
+risk_pct = st.sidebar.slider(
+    "Risk per trade (%)",
+    min_value=0.25,
+    max_value=10.0,
+    value=1.0,
+    step=0.25,
+)
+
+st.sidebar.markdown(
+    "<span style='font-size:0.78rem; color:#8689a3;'>"
+    "This slider controls your risk parameter that the execution engine will use."
+    "</span>",
+    unsafe_allow_html=True,
+)
+
+# ---------- MAIN LAYOUT ----------
+
+# Fake placeholders for now – to be wired to MT5 later
+account_balance = None   # when live: float or Decimal
+session_pl = None        # realized P/L for current session
+win_rate = None          # last N trades
+
+# Hero section
+with st.container():
+    st.markdown(
+        """
+<div class="gg-hero">
+  <h1 style="font-size:1.4rem; font-weight:700; color:#ffffff; margin-bottom:0.15rem;">
+    🥇 GOLD GLADIATOR
+  </h1>
+  <p style="font-size:0.85rem; color:#a5a8c4; margin-bottom:0.2rem;">
+    Intraday AI execution surface for your New York / London day-trading system.
+  </p>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+
+# ----- Top metric cards -----
+col1, col2, col3, col4 = st.columns(4)
+
+with col1:
+    st.markdown(
+        f"""
+<div class="gg-card">
+  <div class="gg-label">ACCOUNT BALANCE</div>
+  <div class="gg-value">{'--' if account_balance is None else f"${account_balance:,.2f}"}</div>
+  <div class="gg-sub">Will display live MT5 equity once linked.</div>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+
+with col2:
+    st.markdown(
+        f"""
+<div class="gg-card">
+  <div class="gg-label">NET P/L (SESSION)</div>
+  <div class="gg-value">{'--' if session_pl is None else f"${session_pl:,.2f}"}</div>
+  <div class="gg-sub">Realized P/L from today's execution only.</div>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+
+with col3:
+    win_text = "--" if win_rate is None else f"{win_rate:.1f}%"
+    st.markdown(
+        f"""
+<div class="gg-card">
+  <div class="gg-label">WIN RATE</div>
+  <div class="gg-value">{win_text}</div>
+  <div class="gg-sub">Rolling win-rate over last 20–50 trades.</div>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+
+with col4:
+    st.markdown(
+        f"""
+<div class="gg-card">
+  <div class="gg-label">RISK / TRADE</div>
+  <div class="gg-value">{risk_pct:.2f}%</div>
+  <div class="gg-sub">User-defined risk parameter used by execution engine.</div>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+
+st.markdown("")  # small vertical space
+
+# ----- Middle row: Equity curve + Engine overview -----
+left, right = st.columns([2.2, 1.3])
+
+# Simple placeholder equity curve using a dummy series
+def demo_equity_curve(n_points: int = 60):
+    base = 100_000
+    times = [datetime.utcnow() - timedelta(minutes=5 * (n_points - i)) for i in range(n_points)]
+    # small synthetic fluctuations
+    pnl = pd.Series([0])
+    for i in range(1, n_points):
+        pnl.loc[i] = pnl.loc[i - 1] + 100 * ((-1) ** i) * 0.3
+    equity = base + pnl
+    df = pd.DataFrame({"time": times, "equity": equity.values})
+    return df
 
 with left:
     st.markdown(
-        '<div class="section-title">EQUITY / PERFORMANCE</div>',
-        unsafe_allow_html=True,
-    )
-    st.markdown('<div class="block-card">', unsafe_allow_html=True)
-
-    # Placeholder equity curve so page is not empty
-    # (Replace with real live / historical equity once MT5 is wired)
-    horizon = 60  # last 60 bars / trades
-    idx = [datetime.now() - timedelta(minutes=5 * i) for i in range(horizon)][::-1]
-    equity = pd.DataFrame(
-        {
-            "Equity": [100_000 + i * 50 for i in range(horizon)]
-        },
-        index=idx,
-    )
-    st.line_chart(equity)
-
-    st.markdown(
-        "<div class='gg-footer'>"
-        "Chart currently displays a static mock equity line. "
-        "When the execution engine is connected, this will track real account equity or R-multiple curve."
-        "</div>",
+        """
+<div class="gg-card gg-chart-box">
+  <div class="gg-section-title">EQUITY / PERFORMANCE</div>
+  <div class="gg-divider"></div>
+""",
         unsafe_allow_html=True,
     )
 
+    eq_df = demo_equity_curve()
+    eq_df = eq_df.set_index("time")
+    st.line_chart(eq_df["equity"])
     st.markdown("</div>", unsafe_allow_html=True)
 
 with right:
-    st.markdown(
-        '<div class="section-title">ENGINE OVERVIEW</div>',
-        unsafe_allow_html=True,
-    )
-    st.markdown('<div class="block-card">', unsafe_allow_html=True)
-
-    status = "ONLINE • ARMED" if engine_on else "OFFLINE • STANDBY"
-    color = "#37ff8b" if engine_on else "#ffb347"
+    status_text = "ONLINE" if engine_active else "OFFLINE – STANDBY"
+    status_color = "#11c76f" if engine_active else "#ffb347"
 
     st.markdown(
         f"""
-        <div style="font-size:0.85rem; color:rgba(255,255,255,0.72);">
-          <span style="font-size:0.8rem; letter-spacing:0.16em; text-transform:uppercase; color:rgba(255,255,255,0.6);">
-            EXECUTION STATUS
-          </span><br/>
-          <span style="font-size:1.0rem; font-weight:600; color:{color};">{status}</span>
-          <br/><br/>
-          <span style="font-size:0.8rem; color:rgba(255,255,255,0.6);">
-            • Reads higher-timeframe structure outside session.<br/>
-            • Hunts manipulation into liquidity during your NY / London windows.<br/>
-            • Executes using your configured risk % and internal R-targets.<br/>
-          </span>
-        </div>
-        """,
+<div class="gg-card">
+  <div class="gg-section-title">ENGINE OVERVIEW</div>
+  <div class="gg-divider"></div>
+
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.6rem;">
+    <div>
+      <div style="font-size:0.78rem; color:#8f93b5; text-transform:uppercase; letter-spacing:0.13em;">EXECUTION STATUS</div>
+      <div style="font-size:0.95rem; font-weight:700; color:{status_color}; margin-top:0.08rem;">
+        {status_text}
+      </div>
+    </div>
+    <div style="font-size:0.78rem; color:#9a9ec0; text-align:right;">
+      Risk/trade: <span style="font-weight:600; color:#ffffff;">{risk_pct:.2f}%</span>
+    </div>
+  </div>
+
+  <div class="gg-bullets">
+    <ul>
+      <li>Reads overall structure and key liquidity levels before your time windows.</li>
+      <li>Tracks manipulation into liquidity during NY / London intraday periods.</li>
+      <li>Uses confirmations on your execution timeframe for entries & exits.</li>
+      <li>Position sizing driven entirely by your configured risk percentage.</li>
+    </ul>
+  </div>
+
+  <div style="font-size:0.72rem; color:#777b97; margin-top:0.35rem;">
+    Backend trade-logging + MT5 link will write live stats into this panel in the next phase.
+  </div>
+</div>
+""",
         unsafe_allow_html=True,
     )
 
-    st.markdown("</div>", unsafe_allow_html=True)
-
-# -------------------------------------------------
-# BOTTOM: POSITIONS / RECENT ORDERS GRID (STATIC MOCK)
-# -------------------------------------------------
+# ----- Bottom spacer / future sections -----
+st.markdown("")
 st.markdown(
-    '<div class="section-title">OPEN / RECENT POSITIONS</div>',
+    "<div style='font-size:0.72rem; color:#656981; margin-top:0.3rem;'>"
+    "Prototype UI only. Next step: wire MT5 data + full execution engine using your time-window strategy."
+    "</div>",
     unsafe_allow_html=True,
 )
-st.markdown('<div class="block-card positions-wrapper">', unsafe_allow_html=True)
-
-# Static sample table – replace later with live positions from MT5
-positions_df = pd.DataFrame(
-    [
-        ["XAUUSD", "BUY", "NY", "Core Setup v1", "—", "—", "Awaiting engine"],
-        ["XAUUSD", "SELL", "LONDON", "Core Setup v1", "—", "—", "Awaiting engine"],
-    ],
-    columns=["Symbol", "Direction", "Session", "Tag", "Entry", "P/L", "Status"],
-)
-
-st.dataframe(
-    positions_df,
-    hide_index=True,
-    use_container_width=True,
-)
-
-st.markdown("</div>", unsafe_allow_html=True)
