@@ -2,339 +2,324 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 
-# ============================
-#  GOLD GLADIATOR – DASHBOARD
-# ============================
+# ===============================
+#  GOLD GLADIATOR – CONTROL CENTRE
+# ===============================
 
 st.set_page_config(
     page_title="Gold Gladiator",
     layout="wide",
-    page_icon="🛡️"
+    initial_sidebar_state="expanded"
 )
 
-# ---- Custom CSS for a more "QuantFlow" / hedge-fund look ----
-st.markdown(
-    """
-    <style>
-        /* Dark background */
-        .stApp {
-            background: #050910;
-            color: #e5e7eb;
-            font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        }
+# ---------- CUSTOM CSS (premium look) ----------
+st.markdown("""
+<style>
+/* Global */
+body {
+    background-color: #05070D;
+}
+section.main > div {
+    padding-top: 0rem;
+}
 
-        /* Sidebar */
-        section[data-testid="stSidebar"] {
-            background-color: #070d16;
-            border-right: 1px solid #1f2933;
-        }
+/* Main background + cards */
+.block-container {
+    padding-top: 1rem;
+    padding-bottom: 2rem;
+}
+.gold-card {
+    background: linear-gradient(135deg, #0B1020 0%, #090C16 60%, #111827 100%);
+    border-radius: 16px;
+    padding: 1.2rem 1.4rem;
+    border: 1px solid rgba(255, 215, 0, 0.16);
+    box-shadow: 0 20px 40px rgba(0,0,0,0.45);
+}
+.metric-card {
+    background: radial-gradient(circle at top left, #1F2933 0%, #05070D 60%);
+    border-radius: 16px;
+    padding: 1.0rem 1.0rem;
+    border: 1px solid rgba(148, 163, 184, 0.35);
+}
 
-        /* Titles */
-        h1, h2, h3 {
-            color: #f9fafb;
-        }
+/* Titles */
+h1, h2, h3, h4 {
+    font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    letter-spacing: 0.02em;
+}
 
-        /* Metric cards */
-        div[data-testid="metric-container"] {
-            background-color: #0b1220;
-            border-radius: 14px;
-            padding: 16px 20px;
-            border: 1px solid #1f2937;
-            box-shadow: 0 8px 20px rgba(0,0,0,0.45);
-        }
+h1 {
+    font-weight: 800;
+    font-size: 2.4rem;
+}
 
-        /* Tables */
-        table {
-            border-radius: 10px;
-            overflow: hidden;
-        }
-        thead tr {
-            background-color: #0b1220 !important;
-        }
-        tbody tr:nth-child(even) {
-            background-color: #050910 !important;
-        }
+h2 {
+    font-weight: 700;
+    font-size: 1.4rem;
+}
 
-        /* Section cards */
-        .section-card {
-            background-color: #050b13;
-            border-radius: 16px;
-            padding: 18px 22px;
-            border: 1px solid #1f2937;
-            box-shadow: 0 8px 22px rgba(0,0,0,0.55);
-        }
+/* Sidebar */
+[data-testid="stSidebar"] {
+    background: radial-gradient(circle at top left, #020617 0%, #020617 35%, #020617 100%);
+    border-right: 1px solid rgba(148, 163, 184, 0.25);
+}
+.sidebar-title {
+    font-size: 1.0rem;
+    font-weight: 700;
+    color: #E5E7EB;
+    margin-bottom: 0.25rem;
+}
 
-        .section-title {
-            font-size: 1.1rem;
-            font-weight: 600;
-            margin-bottom: 8px;
-        }
+/* Badges & labels */
+.badge-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0.25rem 0.7rem;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    border: 1px solid rgba(148, 163, 184, 0.55);
+    color: #E5E7EB;
+    background: radial-gradient(circle at top left, #00472D 0%, #020617 65%);
+}
+.badge-pill span.dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: #22C55E;
+}
 
-        .subtext {
-            font-size: 0.8rem;
-            color: #9ca3af;
-        }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
+/* Tables */
+.dataframe tbody tr:hover {
+    background-color: rgba(15, 23, 42, 0.8) !important;
+}
 
-# ============================
-#  HELPER: LOAD TRADES
-# ============================
+/* Small text */
+.muted {
+    color: #9CA3AF;
+    font-size: 0.78rem;
+}
+.muted-strong {
+    color: #E5E7EB;
+    font-weight: 500;
+    font-size: 0.8rem;
+}
 
-@st.cache_data
-def load_trades() -> pd.DataFrame:
-    """
-    Load trades_log.csv if present.
-    If missing, create a small demo set so the UI doesn't break.
-    Expected columns (you can change later):
-      time, symbol, timeframe, direction, setup, status, r_multiple, result
-    """
-    try:
-        df = pd.read_csv("trades_log.csv")
-    except Exception:
-        # Demo data so the dashboard always shows something
-        demo = [
-            {
-                "time": "2025-12-05 10:15",
-                "symbol": "XAUUSD",
-                "timeframe": "M5",
-                "direction": "BUY",
-                "setup": "M15 Sweep + M5 Engulf",
-                "status": "Completed",
-                "r_multiple": 4.0,
-                "result": "win",
-            },
-            {
-                "time": "2025-12-05 12:30",
-                "symbol": "XAUUSD",
-                "timeframe": "M5",
-                "direction": "SELL",
-                "setup": "M15 Sweep + M5 Engulf",
-                "status": "Completed",
-                "r_multiple": -1.0,
-                "result": "loss",
-            },
-            {
-                "time": "2025-12-05 15:05",
-                "symbol": "XAUUSD",
-                "timeframe": "M5",
-                "direction": "BUY",
-                "setup": "M15 Sweep + M5 Engulf",
-                "status": "Completed",
-                "r_multiple": 3.0,
-                "result": "win",
-            },
-        ]
-        df = pd.DataFrame(demo)
+/* Divider label */
+.section-label {
+    color: #9CA3AF;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+}
 
-    if "time" in df.columns:
-        df["time"] = pd.to_datetime(df["time"])
+/* Green button look for Streamlit primary */
+.stButton>button[kind="primary"] {
+    background: linear-gradient(135deg, #22C55E, #16A34A);
+    border-radius: 999px;
+    color: #020617;
+    font-weight: 700;
+    border: none;
+}
+</style>
+""", unsafe_allow_html=True)
 
-    return df
-
-
-def compute_stats(df: pd.DataFrame, starting_balance: float = 25000.0):
-    total = len(df)
-    wins = (df.get("result", "") == "win").sum()
-    losses = (df.get("result", "") == "loss").sum()
-    winrate = (wins / total * 100) if total > 0 else 0.0
-
-    # If you don't have r_multiple yet, treat missing as 0
-    r_mult = df.get("r_multiple", pd.Series([0] * total))
-    total_R = r_mult.sum()
-
-    # For now we pretend each 1R = 1% of balance
-    net_profit = starting_balance * (total_R / 100.0)
-    equity = starting_balance + net_profit
-
-    return {
-        "total_trades": total,
-        "wins": int(wins),
-        "losses": int(losses),
-        "winrate": winrate,
-        "total_R": float(total_R),
-        "starting_balance": starting_balance,
-        "net_profit": net_profit,
-        "equity": equity,
-    }
-
-
-def build_equity_curve(df: pd.DataFrame, base_balance: float = 25000.0):
-    """Very simple equity curve based on cumulative R."""
-    if "r_multiple" not in df.columns:
-        return pd.DataFrame()
-
-    df_sorted = df.sort_values("time").copy()
-    df_sorted["cum_R"] = df_sorted["r_multiple"].cumsum()
-    df_sorted["equity"] = base_balance * (1 + df_sorted["cum_R"] / 100.0)
-    curve = df_sorted[["time", "equity"]].set_index("time")
-    return curve
-
-
-# ============================
+# ==========================
 #  SIDEBAR – CONTROLS
-# ============================
-
+# ==========================
 with st.sidebar:
-    st.markdown("### Controls")
+    st.markdown("### ⚙️ Controls")
 
-    symbol = st.selectbox("Symbol", ["XAUUSD", "EURUSD", "GBPUSD"])
-    timeframe = st.selectbox("Timeframe", ["M5", "M15", "M30", "H1"])
+    st.markdown('<div class="sidebar-title">Symbol</div>', unsafe_allow_html=True)
+    symbol = st.selectbox("", ["XAUUSD", "EURUSD", "GBPUSD", "NAS100", "US30"], index=0)
 
-    user_risk = st.slider("User risk % (visual only)", 0.5, 20.0, 2.0, step=0.5)
+    st.markdown('<div class="sidebar-title">Primary timeframe</div>', unsafe_allow_html=True)
+    tf = st.selectbox("", ["M5", "M15", "M30", "H1"], index=0)
+
+    st.markdown('<div class="sidebar-title">Session focus</div>', unsafe_allow_html=True)
+    session = st.radio(
+        "",
+        ["London", "New York", "Asia", "All sessions"],
+        index=1
+    )
 
     st.markdown("---")
-    st.markdown("⚠️ **This is NOT an EA/Bot**")
-    st.caption("Signals are observational only. Execution stays 100% manual.")
+    st.markdown('<span class="section-label">Risk visuals</span>', unsafe_allow_html=True)
+    user_risk = st.slider("User risk % (visual only)", 0.25, 20.0, 2.0, 0.25)
 
-# ============================
-#  MAIN LAYOUT
-# ============================
-
-st.title("🛡️ Gold Gladiator")
-st.subheader("Live Day-Trading Performance Dashboard")
-
-st.markdown(
-    """
-This dashboard lets you:
-
-- Monitor your strategy’s live setups  
-- Track wins, losses and overall performance  
-- View intraday behaviour across different sessions  
-
-**Note:** Signals are for observation and research only.  
-Execution always stays 100% manual.
-"""
-)
-
-# ---- Load data + stats ----
-trades_df = load_trades()
-stats = compute_stats(trades_df)
-
-# ============================
-#  TOP METRIC CARDS
-# ============================
-
-col1, col2, col3 = st.columns(3)
-
-with col1:
-    st.metric(
-        label="Balance",
-        value=f"${stats['equity']:,.2f}",
-        delta=f"${stats['net_profit']:,.2f}",
+    st.markdown("---")
+    st.markdown('<span class="section-label">Account view</span>', unsafe_allow_html=True)
+    account_mode = st.radio(
+        "",
+        ["My capital", "Subscriber pool"],
+        index=0
     )
 
-with col2:
-    st.metric(
-        label="Net Profit",
-        value=f"${stats['net_profit']:,.2f}",
-        delta=f"{stats['total_R']:.1f} R total",
-    )
+    st.markdown("---")
+    st.caption("Gold Gladiator Control Centre • Prototype UI\nBackend execution engine to be wired later to MT5 bridge.")
 
-with col3:
-    st.metric(
-        label="Win Rate",
-        value=f"{stats['winrate']:.0f}%",
-        delta=f"Last {stats['total_trades']} trades",
-    )
+# ==========================
+#  HEADER – HERO SECTION
+# ==========================
+col_logo, col_title, col_badge = st.columns([0.9, 4.2, 2.3])
 
-st.markdown("")
+with col_logo:
+    st.markdown("### 🟡")
 
-# ============================
-#  MIDDLE: CHART + ACCOUNT BOX
-# ============================
-
-left, right = st.columns([3, 2])
-
-with left:
-    st.markdown('<div class="section-card">', unsafe_allow_html=True)
-    st.markdown('<div class="section-title">Performance Visualization</div>', unsafe_allow_html=True)
-
-    equity_curve = build_equity_curve(trades_df, stats["starting_balance"])
-    if not equity_curve.empty:
-        st.line_chart(equity_curve)
-    else:
-        st.caption("Equity curve will appear here once `r_multiple` data is available.")
-    st.markdown("</div>", unsafe_allow_html=True)
-
-with right:
-    st.markdown('<div class="section-card">', unsafe_allow_html=True)
-    st.markdown('<div class="section-title">Account Snapshot</div>', unsafe_allow_html=True)
+with col_title:
+    st.markdown("#### GOLD GLADIATOR")
     st.markdown(
-        f"""
-**Symbol:** `{symbol}`  
-**Timeframe:** `{timeframe}`  
-**Risk per trade (visual):** `{user_risk:.1f}%`  
-
-**Total trades:** {stats['total_trades']}  
-- Wins: {stats['wins']}  
-- Losses: {stats['losses']}  
-- Total R: {stats['total_R']:.1f} R  
-        """
+        "<span class='muted-strong'>Live Day-Trading Performance Dashboard</span>",
+        unsafe_allow_html=True
     )
+
+with col_badge:
+    st.markdown(
+        "<div style='text-align:right; margin-top:0.4rem;'>"
+        "<span class='badge-pill'><span class='dot'></span>Engine Monitor Online</span>"
+        "</div>",
+        unsafe_allow_html=True
+    )
+
+st.markdown("")
+
+# ==========================
+#  KPI STRIP – TOP ROW
+# ==========================
+kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+
+# --- Dummy values for now (you will later plug in real stats from the AI engine)
+current_equity = 25000.00
+this_week_pnl = 450.00
+winrate_20 = 72.0
+open_risk = user_risk  # just to show something tied to the slider
+
+with kpi1:
+    st.markdown("<div class='metric-card'>", unsafe_allow_html=True)
+    st.markdown("**Balance**")
+    st.markdown(f"<span class='muted-strong'>${current_equity:,.2f}</span>", unsafe_allow_html=True)
+    st.markdown("<span class='muted'>Linked MT5 account (read-only in this prototype)</span>", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+with kpi2:
+    st.markdown("<div class='metric-card'>", unsafe_allow_html=True)
+    st.markdown("**Net P/L (This Week)**")
+    pnl_color = "#22C55E" if this_week_pnl >= 0 else "#EF4444"
+    sign = "+" if this_week_pnl >= 0 else "-"
+    st.markdown(
+        f"<span class='muted-strong' style='color:{pnl_color};'>{sign}${abs(this_week_pnl):,.2f}</span>",
+        unsafe_allow_html=True
+    )
+    st.markdown("<span class='muted'>Closed trades only</span>", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+with kpi3:
+    st.markdown("<div class='metric-card'>", unsafe_allow_html=True)
+    st.markdown("**Win Rate**")
+    st.markdown(
+        f"<span class='muted-strong' style='color:#A855F7;'>{winrate_20:.0f}%</span>",
+        unsafe_allow_html=True
+    )
+    st.markdown("<span class='muted'>Last 20 completed trades</span>", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+with kpi4:
+    st.markdown("<div class='metric-card'>", unsafe_allow_html=True)
+    st.markdown("**Configured Risk / Trade**")
+    st.markdown(
+        f"<span class='muted-strong' style='color:#FBBF24;'>{open_risk:.2f}%</span>",
+        unsafe_allow_html=True
+    )
+    st.markdown("<span class='muted'>Visual risk control – user adjustable</span>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
 st.markdown("")
 
-# ============================
-#  LIVE SETUP SCANNER
-# ============================
+# ==========================
+#  MAIN BODY – TWO COLUMNS
+# ==========================
+left, right = st.columns([2.1, 1.4])
 
-st.markdown('<div class="section-card">', unsafe_allow_html=True)
-st.markdown('<div class="section-title">📡 Live Setup Scanner</div>', unsafe_allow_html=True)
-
-# Filter latest setups for selected symbol/timeframe
-scanner_df = trades_df.copy()
-if "symbol" in scanner_df.columns:
-    scanner_df = scanner_df[scanner_df["symbol"] == symbol]
-if "timeframe" in scanner_df.columns:
-    scanner_df = scanner_df[scanner_df["timeframe"] == timeframe]
-
-# Basic column rename for cleaner display
-display_cols = []
-for c in ["time", "symbol", "timeframe", "direction", "setup", "status", "r_multiple"]:
-    if c in scanner_df.columns:
-        display_cols.append(c)
-
-if display_cols:
-    tmp = scanner_df.sort_values("time", ascending=False)[display_cols].head(20)
-    tmp = tmp.rename(
-        columns={
-            "time": "Time",
-            "symbol": "Pair",
-            "timeframe": "TF",
-            "direction": "Direction",
-            "setup": "Setup",
-            "status": "Status",
-            "r_multiple": "Est. TP (R mult)",
-        }
+# ---------- LEFT: LIVE SETUP FEED ----------
+with left:
+    st.markdown("#### 📡 Live Setup Feed")
+    st.markdown(
+        "<span class='muted'>Stream of detected intraday opportunities based on your private rule-set.</span>",
+        unsafe_allow_html=True
     )
-    st.dataframe(tmp, use_container_width=True)
-else:
-    st.caption("No setup data available yet. Once trades are logged, they will appear here.")
 
-st.markdown("</div>", unsafe_allow_html=True)
-
-st.markdown("")
-
-# ============================
-#  PERFORMANCE TRACKING (RAW)
-# ============================
-
-st.markdown('<div class="section-card">', unsafe_allow_html=True)
-st.markdown('<div class="section-title">📊 Performance Tracking (raw data)</div>', unsafe_allow_html=True)
-
-st.json(
-    {
-        "Total Trades": stats["total_trades"],
-        "Wins": stats["wins"],
-        "Losses": stats["losses"],
-        "Winrate %": round(stats["winrate"], 1),
-        "Total R": round(stats["total_R"], 2),
-        "Net Profit (approx)": round(stats["net_profit"], 2),
+    # Example single row – later this will be filled from your pattern engine output
+    now = datetime.utcnow().replace(microsecond=0)
+    demo_row = {
+        "Time (UTC)": [now],
+        "Symbol": [symbol],
+        "Primary TF": [tf],
+        "Direction": ["BUY"],
+        "Engine Tag": ["Prime Setup v1"],
+        "State": ["Awaiting execution"],
+        "Est. Target (R multiple)": ["4R+"],
     }
-)
+    live_df = pd.DataFrame(demo_row)
 
-st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown("<br/>", unsafe_allow_html=True)
+    st.dataframe(
+        live_df,
+        use_container_width=True,
+        hide_index=True
+    )
+
+    st.markdown("<br/>", unsafe_allow_html=True)
+    st.markdown("#### 📈 Intraday Session View (placeholder)")
+    st.markdown(
+        "<span class='muted'>Here we’ll later plug in charts / heatmaps showing how your engine behaves across different sessions and time windows.</span>",
+        unsafe_allow_html=True
+    )
+
+# ---------- RIGHT: PERFORMANCE / ACCOUNT PANEL ----------
+with right:
+    st.markdown("#### 🧠 Engine Diagnostics")
+    st.markdown("<div class='gold-card'>", unsafe_allow_html=True)
+
+    st.markdown("**Strategy Profile**")
+    st.markdown(
+        "<span class='muted'>Time-window intraday system built around liquidity grabs, structural breaks and confirmation price action.</span>",
+        unsafe_allow_html=True
+    )
+
+    st.markdown("<br/>", unsafe_allow_html=True)
+    st.markdown("**Engine Status**")
+    st.markdown(
+        """
+        • Signal quality filter: **STRICT**  
+        • Execution mode: **Manual / research** in this prototype  
+        • Cloud location: Shared Streamlit workspace  
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown("<br/>", unsafe_allow_html=True)
+    st.markdown("**Next upgrades (roadmap)**")
+    st.markdown(
+        """
+        • 🔌 Secure MT5 bridge for live execution  
+        • 👥 Multi-user accounts & subscription tiers  
+        • 📊 Deeper analytics: equity curves, max drawdown, risk-of-ruin  
+        """,
+        unsafe_allow_html=True
+    )
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    st.markdown("<br/>", unsafe_allow_html=True)
+    st.markdown("#### 📊 Performance Snapshot (mock data)")
+    stats = {
+        "Total Trades": [0],
+        "Wins": [0],
+        "Losses": [0],
+        "Win Rate %": [0],
+        "Best R Multiple": [0],
+        "Worst R Multiple": [0],
+    }
+    stats_df = pd.DataFrame(stats)
+    st.dataframe(stats_df, hide_index=True, use_container_width=True)
