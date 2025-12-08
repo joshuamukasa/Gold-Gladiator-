@@ -296,3 +296,55 @@ def find_trades(
             trades.append(tr)
 
     return trades
+
+# --------------------------------------------------------------------
+# Helper for the Streamlit dashboard
+# --------------------------------------------------------------------
+
+from dataclasses import asdict
+
+def scan_market(symbol: str = "XAUUSD"):
+    """
+    This is the ONLY function the Streamlit app will call.
+
+    It should:
+      - Look at the current market (M5 + M15, your time windows)
+      - Decide if there is a valid setup (1 or 2)
+      - Return a simple dict with the trade plan
+      - Or return None if there is NO TRADE
+
+    IMPORTANT:
+      Inside this function you must call your main analysis function.
+      If your main function has a different name than the one I put,
+      just change that one line.
+    """
+
+    # 🔴 CHANGE THIS LINE to match your real analysis function
+    # For example, if your main function is called `evaluate_setups`
+    # or `run_strategy`, call that here instead.
+    result = evaluate_setups(symbol)   # <-- rename this if needed
+
+    # If your `result` object already has a flag for "no setup", use it here.
+    if result is None:
+        return None
+    if hasattr(result, "has_signal") and not result.has_signal:
+        return None
+
+    # If `result` is a dataclass, convert to dict
+    try:
+        data = asdict(result)
+    except Exception:
+        # otherwise assume it's already a dict-like object
+        data = dict(result)
+
+    # Normalise keys so the app always knows what to expect
+    return {
+        "symbol": data.get("symbol", symbol),
+        "direction": data.get("direction"),          # "BUY" or "SELL"
+        "setup_type": data.get("setup_type"),        # 1 or 2
+        "session": data.get("session", data.get("window_name")),
+        "entry": float(data.get("entry_price", data.get("entry", 0))),
+        "sl": float(data.get("stop_loss", data.get("sl", 0))),
+        "tp": float(data.get("take_profit", data.get("tp", 0))),
+        "reason": data.get("reason", data.get("comment", "")),
+    }
