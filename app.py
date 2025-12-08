@@ -1,51 +1,38 @@
 import streamlit as st
-import datetime as dt
-from datetime import timedelta
-import numpy as np
+import MetaTrader5 as mt5
 
-# Only used later when we wire MT5 back in
-try:
-    import MetaTrader5 as mt5
-    MT5_AVAILABLE = True
-except ImportError:
-    MT5_AVAILABLE = False
-
-# --------------------------------------------------
-# PAGE CONFIG
-# --------------------------------------------------
+# ----------------------------------------------------
+# PAGE SETUP
+# ----------------------------------------------------
 st.set_page_config(
     page_title="Gold Gladiator",
     layout="wide",
 )
 
-# --------------------------------------------------
-# SESSION INITIALISATION
-# --------------------------------------------------
-def init_session():
-    if "logged_in" not in st.session_state:
-        st.session_state.logged_in = False
-    if "username" not in st.session_state:
-        st.session_state.username = None
-    if "plan" not in st.session_state:
-        st.session_state.plan = "Free (Backtest / Demo only)"
+# ----------------------------------------------------
+# SESSION STATE
+# ----------------------------------------------------
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+if "username" not in st.session_state:
+    st.session_state.username = None
+if "mt5_connected" not in st.session_state:
+    st.session_state.mt5_connected = False
+if "mt5_account" not in st.session_state:
+    st.session_state.mt5_account = None
+if "mt5_server" not in st.session_state:
+    st.session_state.mt5_server = None
 
-init_session()
 
-# --------------------------------------------------
-# SIMPLE LOCAL LOGIN LOGIC
-# --------------------------------------------------
-VALID_USERS = {
-    # change these if you like – they are ONLY checked locally
-    "admin": "gladiator123",
-    "josh": "oneSetup4Life",
-}
-
+# ----------------------------------------------------
+# LOGIN SCREEN (LOCAL ONLY)
+# ----------------------------------------------------
 def login_screen():
-    st.title("GOLD GLADIATOR – Login")
+    st.title("GOLD GLADIATOR – Owner Login")
 
     st.write(
-        "This is a **local login** for your private AI trading console.\n"
-        "Credentials are checked only on this machine and are *not* sent anywhere."
+        "This login just protects the console **on this laptop**. "
+        "No data is being sent anywhere yet."
     )
 
     with st.form("login_form"):
@@ -54,168 +41,178 @@ def login_screen():
         submitted = st.form_submit_button("Login")
 
     if submitted:
-        if username in VALID_USERS and VALID_USERS[username] == password:
+        if username.strip() != "" and password.strip() != "":
             st.session_state.logged_in = True
-            st.session_state.username = username
-            st.success("Logged in successfully. Loading dashboard…")
+            st.session_state.username = username.strip()
+            st.success("Logged in. Loading dashboard…")
             st.experimental_rerun()
         else:
-            st.error("Invalid username or password.")
+            st.error("Please enter a username and password.")
 
     st.info(
-        "For now you can use, for example:\n"
-        "- **Username:** `josh`\n"
-        "- **Password:** `oneSetup4Life`"
+        "For now, you can log in with **any** username/password "
+        "(e.g. `josh` / `1234`).\n"
+        "Later we can hard-code or externalize real owner creds."
     )
+
 
 def logout_button():
     if st.sidebar.button("Log out"):
+        # also disconnect MT5 when logging out
+        if st.session_state.mt5_connected:
+            mt5.shutdown()
         st.session_state.logged_in = False
         st.session_state.username = None
+        st.session_state.mt5_connected = False
+        st.session_state.mt5_account = None
+        st.session_state.mt5_server = None
         st.experimental_rerun()
 
-# --------------------------------------------------
-# VERY SIMPLE PLACEHOLDER TRADING LOGIC
-# (we will replace this with your Setup 1 & 2 rules)
-# --------------------------------------------------
-def dummy_direction():
-    # Always NO-TRADE for now – just to prove wiring
-    return "NO-TRADE", "Strategy core not wired yet (placeholder)."
 
-# --------------------------------------------------
+# ----------------------------------------------------
+# MT5 CONNECTION PANEL
+# ----------------------------------------------------
+def mt5_connection_panel():
+    st.sidebar.subheader("MT5 Connection")
+
+    if st.session_state.mt5_connected:
+        st.sidebar.success(
+            f"Connected: {st.session_state.mt5_account} @ "
+            f"{st.session_state.mt5_server}"
+        )
+
+        if st.sidebar.button("Disconnect MT5"):
+            mt5.shutdown()
+            st.session_state.mt5_connected = False
+            st.session_state.mt5_account = None
+            st.session_state.mt5_server = None
+            st.sidebar.info("Disconnected from MT5.")
+    else:
+        st.sidebar.warning("Not connected to MT5")
+
+        with st.sidebar.form("mt5_login_form"):
+            account = st.text_input("Account number")
+            password = st.text_input("Account password", type="password")
+            server = st.text_input("Server name (as shown in MT5)")
+            submitted = st.form_submit_button("Connect to MT5")
+
+        if submitted:
+            # Basic sanity-check
+            if account.strip() == "" or password.strip() == "" or server.strip() == "":
+                st.sidebar.error("Fill in account, password and server.")
+            else:
+                try:
+                    acc_number = int(account.strip())
+                except ValueError:
+                    st.sidebar.error("Account number must be digits only.")
+                    return
+
+                # Try to initialize MT5
+                ok = mt5.initialize(
+                    login=acc_number,
+                    password=password.strip(),
+                    server=server.strip(),
+                )
+
+                if not ok:
+                    st.sidebar.error(f"MT5 init failed: {mt5.last_error()}")
+                else:
+                    st.session_state.mt5_connected = True
+                    st.session_state.mt5_account = acc_number
+                    st.session_state.mt5_server = server.strip()
+                    st.sidebar.success("MT5 connected successfully!")
+
+
+# ----------------------------------------------------
+# STRATEGY PLACEHOLDER
+# ----------------------------------------------------
+def scan_for_setups(symbol: str, timeframe: str):
+    """
+    TEMPORARY STRATEGY SHELL.
+
+    Right now it ALWAYS returns NO-TRADE so we don't fire
+    random orders. Once your Setup 1 / Setup 2 engine is
+    locked in, we will replace this to call the real logic.
+    """
+    direction = "NO-TRADE"
+    explanation = (
+        "Engine shell online. Setup 1 / Setup 2 logic not wired "
+        "into this app yet, so I am deliberately not trading."
+    )
+    return direction, explanation
+
+
+# ----------------------------------------------------
 # MAIN DASHBOARD
-# --------------------------------------------------
+# ----------------------------------------------------
 def main_dashboard():
-    st.title("GOLD GLADIATOR")
+    st.title("GOLD GLADIATOR – AI Execution Console")
 
     st.caption(
-        f"Private intraday AI execution console – logged in as "
-        f"**{st.session_state.username}**"
+        f"Owner: **{st.session_state.username}**  |  "
+        "Mode: local dev – MT5 connection is per login"
     )
 
-    # ---------- SIDEBAR: SUBSCRIPTION ----------
-    st.sidebar.subheader("Account")
-
+    # ---- Sidebar controls ----
     logout_button()
+    mt5_connection_panel()
 
-    plan = st.sidebar.selectbox(
-        "Subscription plan",
-        [
-            "Free (Backtest / Demo only)",
-            "Pro (Live signals, manual execution)",
-            "Live (Auto-execution with MT5)",
-        ],
-        index=["Free (Backtest / Demo only)",
-               "Pro (Live signals, manual execution)",
-               "Live (Auto-execution with MT5)"].index(st.session_state.plan),
-    )
-    st.session_state.plan = plan
-
-    if plan.startswith("Free"):
-        st.sidebar.info(
-            "You are on the **Free** plan.\n\n"
-            "- No live auto-trading\n"
-            "- You can still run scans and get directions\n"
-            "- Great for demo / forward testing"
-        )
-    elif plan.startswith("Pro"):
-        st.sidebar.success(
-            "You are on **Pro** (concept).\n\n"
-            "In the real system this would unlock:\n"
-            "- Live signals during London & New York sessions\n"
-            "- Manual click-to-execute suggestions"
-        )
-    else:
-        st.sidebar.warning(
-            "You selected **Live (Auto-execution)**.\n\n"
-            "To actually auto-trade we would still need:\n"
-            "- Secure API key / license check\n"
-            "- MT5 terminal authorised & linked\n"
-            "- Broker / prop firm risk agreement."
-        )
-
-    st.sidebar.markdown("---")
-
-    # ---------- SIDEBAR: RISK & SYMBOL ----------
+    symbol = st.sidebar.selectbox("Symbol", ["XAUUSD", "EURUSD"], index=0)
+    timeframe = st.sidebar.radio("Timeframe", ["M5", "M15"], index=1)
     risk_pct = st.sidebar.slider(
-        "Risk per trade (%)",
-        min_value=0.25,
-        max_value=10.0,
-        value=1.0,
-        step=0.25,
-    )
-
-    symbol = st.sidebar.selectbox(
-        "Symbol",
-        options=["XAUUSD", "EURUSD"],
-        index=0,
-    )
-
-    tf_label = st.sidebar.radio(
-        "Trading timeframe",
-        options=["M5", "M15"],
-        index=1,
+        "Risk per trade (%)", min_value=0.25, max_value=10.0, value=1.0, step=0.25
     )
 
     st.sidebar.caption(
-        "Real execution will only be allowed inside your London & "
-        "New York windows once the full strategy core is wired."
+        "Execution will respect your London / New York windows "
+        "once the full strategy logic is integrated."
     )
 
-    # ---------- TOP SUMMARY ----------
-    col1, col2, col3, col4 = st.columns(4)
-
-    with col1:
+    # ---- Top metrics row (visual only for now) ----
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
         st.metric("ACCOUNT BALANCE", "—")
-    with col2:
+    with c2:
         st.metric("NET P/L (SESSION)", "—")
-    with col3:
+    with c3:
         st.metric("WIN RATE", "—")
-    with col4:
+    with c4:
         st.metric("RISK PER TRADE", f"{risk_pct:.2f}%")
 
     st.markdown("### Equity / Performance")
-    equity_placeholder = st.empty()
-    equity_placeholder.line_chart([0])  # placeholder flat line
+    st.line_chart([0, 0, 0])  # flat placeholder line
 
     st.markdown("---")
-
-    # ---------- SCAN BUTTON ----------
     st.markdown("### Intraday scan")
 
-    st.write(
-        "This is the **shell** of your AI. Right now it only proves the flow:\n"
-        "1. You log in\n"
-        "2. You select a subscription plan\n"
-        "3. You choose symbol / timeframe & risk\n"
-        "4. You click **Scan today for setups** and see a decision\n\n"
-        "Next step is to wire your full Setup 1 & 2 logic into this scan."
-    )
+    if not st.session_state.mt5_connected:
+        st.warning("Connect to your MT5 account in the sidebar first.")
+    else:
+        st.info(
+            "When you click **Scan today for setups**, the AI engine will "
+            "look for your Setup 1 / Setup 2 structures. "
+            "For now it only returns NO-TRADE until the core is integrated."
+        )
 
-    scan_button = st.button("🔍 Scan today for setups")
+        if st.button("🔍 Scan today for setups"):
+            direction, explanation = scan_for_setups(symbol, timeframe)
 
-    result_box = st.empty()
+            if direction == "NO-TRADE":
+                st.warning(f"NO-TRADE: {explanation}")
+            elif direction == "BUY":
+                st.success(f"✅ BUY {symbol} ({timeframe}) – {explanation}")
+            elif direction == "SELL":
+                st.success(f"✅ SELL {symbol} ({timeframe}) – {explanation}")
 
-    if scan_button:
-        direction, explanation = dummy_direction()
+            st.caption(
+                "Next step: wire your full strategy into this scan and then "
+                "map its signals to MT5 orders."
+            )
 
-        if direction == "NO-TRADE":
-            result_box.warning(f"NO-TRADE: {explanation}")
-        elif direction == "BUY":
-            result_box.success(f"✅ BUY {symbol} ({tf_label}). Reason: {explanation}")
-        elif direction == "SELL":
-            result_box.success(f"✅ SELL {symbol} ({tf_label}). Reason: {explanation}")
 
-    # ---------- FOOTER ----------
-    st.markdown("---")
-    st.caption(
-        "Login and subscription system are **local only** right now. "
-        "No credentials or trading data are sent outside this machine."
-    )
-
-# --------------------------------------------------
-# ROUTER: SHOW LOGIN OR DASHBOARD
-# --------------------------------------------------
+# ----------------------------------------------------
+# ROUTER
+# ----------------------------------------------------
 if not st.session_state.logged_in:
     login_screen()
 else:
