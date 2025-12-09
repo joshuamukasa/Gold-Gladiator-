@@ -1,125 +1,99 @@
-import MetaTrader5 as mt5
-from datetime import datetime
+# strategy_engine.py
+
+import numpy as np
 import pandas as pd
-import time
-
-SYMBOL = "GOLD"
-
-TF_M15 = mt5.TIMEFRAME_M15
-TF_M5 = mt5.TIMEFRAME_M5
 
 
-# ------------------------------
-# INITIALIZE MT5
-# ------------------------------
+def _to_dataframe(rates_array):
+    """
+    Convert MT5 rates array to a clean pandas DataFrame.
+    Expects fields: time, open, high, low, close, tick_volume, spread, real_volume
+    """
+    if rates_array is None or len(rates_array) == 0:
+        return None
 
-if not mt5.initialize():
-    print("❌ MT5 INITIALIZATION FAILED:", mt5.last_error())
-    quit()
+    df = pd.DataFrame(rates_array)
+    # Ensure required columns exist
+    needed = ["time", "open", "high", "low", "close"]
+    for col in needed:
+        if col not in df.columns:
+            return None
 
-print("✅ MT5 CONNECTED")
+    # Convert unix time to pandas datetime if it's numeric
+    if np.issubdtype(df["time"].dtype, np.number):
+        df["time"] = pd.to_datetime(df["time"], unit="s")
 
-# ------------------------------
-# HELPER FUNCTIONS
-# ------------------------------
-
-def fetch_candles(tf, count=20):
-    rates = mt5.copy_rates_from_pos(SYMBOL, tf, 0, count)
-    df = pd.DataFrame(rates)
-    df['time'] = pd.to_datetime(df['time'], unit='s')
-    return df
-
-
-def is_bullish_engulf(prev, curr):
-    return (
-        curr['close'] > curr['open']
-        and prev['close'] < prev['open']
-        and curr['close'] > prev['open']
-        and curr['open'] < prev['close']
-    )
+    return df[["time", "open", "high", "low", "close"]]
 
 
-def is_bearish_engulf(prev, curr):
-    return (
-        curr['close'] < curr['open']
-        and prev['close'] > prev['open']
-        and curr['close'] < prev['open']
-        and curr['open'] > prev['close']
-    )
+def _dominant_direction(df):
+    """
+    Very simple "who is in control" check based on closes.
+    This is NOT your full setup logic – just a bias helper.
+    """
+    if df is None or len(df) < 5:
+        return "UNKNOWN"
+
+    first_close = df["close"].iloc[0]
+    last_close = df["close"].iloc[-1]
+
+    if last_close > first_close * 1.002:  # >0.2% up
+        return "BUY"
+    if last_close < first_close * 0.998:  # >0.2% down
+        return "SELL"
+    return "RANGE"
 
 
-# ------------------------------
-# MAIN LOOP
-# ------------------------------
+def analyse_market(rates_m5, rates_m15):
+    """
+    Main entry point used by the Streamlit app.
 
-print("\n🚀 STRATEGY ENGINE RUNNING (LIVE MODE)\n")
+    Right now this function:
+    - converts raw MT5 rates to DataFrames
+    - figures out dominant direction on M15
+    - ALWAYS returns NO_TRADE to stay safe until we
+      encode your exact Setup 1 / Setup 2 rules.
 
-while True:
+    Returns a dict, e.g.:
 
-    try:
-        # ------------------------------
-        # GET TIMEFRAMES
-        # ------------------------------
+    {
+        "has_setup": False,
+        "setup_name": None,
+        "direction": "BUY" / "SELL" / "RANGE" / "UNKNOWN",
+        "timeframe": "M15",
+        "entry_price": None,
+        "stop_loss": None,
+        "take_profit": None,
+        "explanation": "..."
+    }
+    """
 
-        m15 = fetch_candles(TF_M15)
-        m5 = fetch_candles(TF_M5)
+    df15 = _to_dataframe(rates_m15)
+    df5 = _to_dataframe(rates_m5)
 
-        prev15 = m15.iloc[-2]
-        curr15 = m15.iloc[-1]
+    direction = _dominant_direction(df15)
 
-        prev5 = m5.iloc[-2]
-        curr5 = m5.iloc[-1]
+    # 🔒 SAFETY: we don't auto-trade yet – just report bias
+    result = {
+        "has_setup": False,          # <-- always NO_TRADE for now
+        "setup_name": None,
+        "direction": direction,
+        "timeframe": "M15",
+        "entry_price": None,
+        "stop_loss": None,
+        "take_profit": None,
+        "explanation": (
+            "Pipeline test only – MT5 connection and candle "
+            "processing are working. Setup-1 / Setup-2 rules "
+            "still need to be fully encoded here."
+        ),
+        "last_candle_time": df15["time"].iloc[-1] if df15 is not None and len(df15) else None,
+    }
 
-        signal = None
+    # Later we will replace this block with your real logic:
+    # - detect manipulation vs clean move
+    # - break of structure
+    # - retrace into gap + OB
+    # - engulfing confirmation in the correct time window
 
-        # ------------------------------
-        # M15 CONFIRMATION
-        # ------------------------------
-
-        if is_bullish_engulf(prev15, curr15):
-            m15_bias = "BUY"
-        elif is_bearish_engulf(prev15, curr15):
-            m15_bias = "SELL"
-        else:
-            m15_bias = None
-
-        # ------------------------------
-        # M5 EXECUTION
-        # ------------------------------
-
-        if m15_bias == "BUY" and is_bullish_engulf(prev5, curr5):
-            signal = "BUY"
-
-        elif m15_bias == "SELL" and is_bearish_engulf(prev5, curr5):
-            signal = "SELL"
-
-
-        # ------------------------------
-        # OUTPUT SIGNAL
-        # ------------------------------
-
-        now = datetime.now().strftime("%H:%M:%S")
-
-        if signal:
-            print(f"\n🟢 TRADE SIGNAL [{now}]")
-            print("PAIR:", SYMBOL)
-            print("DIRECTION:", signal)
-            print("M15 ENGULF CONFIRMED")
-            print("M5 ENTRY ENGULF CONFIRMED")
-            print("PRICE:", curr5['close'])
-
-        else:
-            print(f"[{now}] NO SIGNAL – monitoring...")
-
-        time.sleep(5)
-
-    except Exception as e:
-        print("❌ ERROR:", e)
-        time.sleep(5)
-
-
-# ------------------------------
-# SHUTDOWN
-# ------------------------------
-
-mt5.shutdown()
+    return result
