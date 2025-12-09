@@ -1,199 +1,145 @@
-# ============================
-# GOLD GLADIATOR ENGINE
-# ============================
+# engine.py
+# -------------------------------------
+# MT5 connection + auto gold symbol detection
+# Order execution engine ONLY
+# Strategy logic lives in strategy_engine.py
+# -------------------------------------
 
 import MetaTrader5 as mt5
-from datetime import datetime, timezone
-from dataclasses import dataclass
-
-# ----------------------------------------------------
-# Initialize MT5
-# ----------------------------------------------------
-
-if not mt5.initialize():
-    raise RuntimeError("MT5 failed to initialize")
-
-# ----------------------------------------------------
-# Data structure
-# ----------------------------------------------------
-
-@dataclass
-class TradeSignal:
-    symbol: str
-    direction: str
-    setup_type: int
-    session: str
-    entry: float
-    sl: float
-    tp: float
-    reason: str
-    has_signal: bool
+from datetime import datetime
+import time
 
 
-# ----------------------------------------------------
-# Sessions
-# ----------------------------------------------------
+class MT5Engine:
+    def __init__(self):
+        self.symbol = None
 
-def get_session():
-    utc_hour = datetime.now(timezone.utc).hour
-    
-    if 7 <= utc_hour < 11:
-        return "London"
-    elif 13 <= utc_hour < 17:
-        return "New York"
-    else:
-        return None
+    # ---------------------------------
+    # Connect to MT5
+    # ---------------------------------
+    def connect(self):
+        print("\n=== MT5 ENGINE INIT ===")
 
+        if not mt5.initialize():
+            raise RuntimeError(f"MT5 INIT FAILED: {mt5.last_error()}")
 
-# ----------------------------------------------------
-# Candle retrieval
-# ----------------------------------------------------
+        account = mt5.account_info()
+        if not account:
+            raise RuntimeError("❌ Could not access MT5 account")
 
-def get_candles(symbol, timeframe, count=200):
-    rates = mt5.copy_rates_from_pos(symbol, timeframe, 0, count)
-    if rates is None:
-        return None
-    return rates
+        print("✅ CONNECTED TO MT5")
+        print("Login:", account.login)
+        print("Broker:", account.company)
+        print("Balance:", account.balance)
 
+        self.symbol = self.detect_gold_symbol()
+        print(f"✅ GOLD SYMBOL DETECTED: {self.symbol}")
 
-# ----------------------------------------------------
-# Structure break check
-# ----------------------------------------------------
+    # ---------------------------------
+    # Auto-detect gold instrument name
+    # ---------------------------------
+    def detect_gold_symbol(self):
+        symbols = mt5.symbols_get()
 
-def break_of_structure(candles):
-    highs = [c['high'] for c in candles[-6:-1]]
-    lows  = [c['low'] for c in candles[-6:-1]]
+        gold_candidates = []
 
-    last = candles[-1]
+        for s in symbols:
+            name = s.name.upper()
+            if "XAUUSD" in name or "GOLD" in name:
+                gold_candidates.append(s.name)
 
-    if last['close'] > max(highs):
-        return "BULL"
-    if last['close'] < min(lows):
-        return "BEAR"
+        if not gold_candidates:
+            raise RuntimeError("❌ Could not find ANY gold symbols on broker")
 
-    return None
+        print("\n🪙 Gold symbols found:")
+        for sym in gold_candidates:
+            print(" -", sym)
 
+        return gold_candidates[0]
 
-# ----------------------------------------------------
-# Engulfing confirmation
-# ----------------------------------------------------
+    # ---------------------------------
+    # Pull recent candles safely
+    # ---------------------------------
+    def get_candles(self, timeframe=mt5.TIMEFRAME_M15, bars=50):
+        rates = mt5.copy_rates_from_pos(self.symbol, timeframe, 0, bars)
 
-def engulfing(candles):
-    prev = candles[-2]
-    curr = candles[-1]
+        if rates is None:
+            raise RuntimeError(f"MT5 DATA ERROR: {mt5.last_error()}")
 
-    # Bullish engulfing
-    if curr['close'] > prev['high']:
-        return "BUY"
+        candles = []
 
-    # Bearish engulfing
-    if curr['close'] < prev['low']:
-        return "SELL"
+        for r in rates:
+            candles.append({
+                "time": datetime.fromtimestamp(r['time']),
+                "open": round(r['open'], 2),
+                "high": round(r['high'], 2),
+                "low": round(r['low'], 2),
+                "close": round(r['close'], 2)
+            })
 
-    return None
+        return candles
 
+    # ---------------------------------
+    # Place market order
+    # ---------------------------------
+    def place_trade(self, side, lot=0.01, sl_points=300, tp_points=600):
 
-# ----------------------------------------------------
-# MAIN STRATEGY CHECK
-# ----------------------------------------------------
+        tick = mt5.symbol_info_tick(self.symbol)
 
-def evaluate_setups(symbol="XAUUSD"):
+        if tick is None:
+            raise RuntimeError("❌ Could not fetch tick data")
 
-    session = get_session()
-    
-    # No trading outside session windows
-    if session is None:
-        return TradeSignal(
-            symbol=symbol,
-            direction=None,
-            setup_type=0,
-            session=None,
-            entry=0,
-            sl=0,
-            tp=0,
-            reason="Outside London / New York session",
-            has_signal=False
-        )
+        price = tick.ask if side == "buy" else tick.bid
+        point = mt5.symbol_info(self.symbol).point
 
-    m15 = get_candles(symbol, mt5.TIMEFRAME_M15)
-    m5  = get_candles(symbol, mt5.TIMEFRAME_M5)
+        sl = price - sl_points * point if side == "buy" else price + sl_points * point
+        tp = price + tp_points * point if side == "buy" else price - tp_points * point
 
-    if m15 is None or m5 is None:
-        return None
+        request = {
+            "action": mt5.TRADE_ACTION_DEAL,
+            "symbol": self.symbol,
+            "volume": lot,
+            "type": mt5.ORDER_TYPE_BUY if side == "buy" else mt5.ORDER_TYPE_SELL,
+            "price": price,
+            "sl": sl,
+            "tp": tp,
+            "deviation": 20,
+            "magic": 777,
+            "comment": "Gold Gladiator AI",
+            "type_time": mt5.ORDER_TIME_GTC,
+            "type_filling": mt5.ORDER_FILLING_IOC,
+        }
 
-    structure = break_of_structure(m15)
+        result = mt5.order_send(request)
 
-    # No structure break = no trade
-    if structure is None:
-        return TradeSignal(
-            symbol=symbol,
-            direction=None,
-            setup_type=0,
-            session=session,
-            entry=0,
-            sl=0,
-            tp=0,
-            reason="No break of structure",
-            has_signal=False
-        )
+        if result.retcode != mt5.TRADE_RETCODE_DONE:
+            raise RuntimeError(f"❌ ORDER FAILED: {result.comment}")
 
-    confirm = engulfing(m5)
+        print("\n✅ ORDER PLACED")
+        print("Type:", side)
+        print("Entry:", price)
+        print("SL:", round(sl, 2))
+        print("TP:", round(tp, 2))
 
-    # No engulfing = no trade
-    if confirm is None:
-        return TradeSignal(
-            symbol=symbol,
-            direction=None,
-            setup_type=0,
-            session=session,
-            entry=0,
-            sl=0,
-            tp=0,
-            reason="No engulfing confirmation",
-            has_signal=False
-        )
+        return result
 
-    direction = confirm
-
-    entry = m5[-1]['close']
-
-    # Basic SL/TP logic
-    sl = entry - 30 if direction == "BUY" else entry + 30
-    tp = entry + 90 if direction == "BUY" else entry - 90
-
-    setup = 1 if structure == "BEAR" or structure == "BULL" else 2
-
-    return TradeSignal(
-        symbol=symbol,
-        direction=direction,
-        setup_type=setup,
-        session=session,
-        entry=round(entry,2),
-        sl=round(sl,2),
-        tp=round(tp,2),
-        reason="Manipulation -> BOS -> Engulfing confirmation",
-        has_signal=True
-    )
+    # ---------------------------------
+    # Shutdown MT5
+    # ---------------------------------
+    def shutdown(self):
+        mt5.shutdown()
+        print("\n✅ MT5 CONNECTION CLOSED")
 
 
-# ----------------------------------------------------
-# STREAMLIT INTERFACE CALL
-# ----------------------------------------------------
+# -------------------------------------
+# Stand-alone test
+# -------------------------------------
+if __name__ == "__main__":
+    engine = MT5Engine()
+    engine.connect()
 
-def scan_market(symbol="XAUUSD"):
+    candles = engine.get_candles()
+    for c in candles[-10:]:
+        print(c)
 
-    result = evaluate_setups(symbol)
-
-    if result is None or not result.has_signal:
-        return None
-
-    return {
-        "symbol": result.symbol,
-        "direction": result.direction,
-        "setup_type": result.setup_type,
-        "session": result.session,
-        "entry": result.entry,
-        "sl": result.sl,
-        "tp": result.tp,
-        "reason": result.reason,
-    }
+    engine.shutdown()
