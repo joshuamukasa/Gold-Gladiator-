@@ -1,286 +1,311 @@
-import datetime
-from typing import Optional
+import datetime as dt
+from typing import Optional, List
 
 import streamlit as st
-import MetaTrader5 as mt5
+import pandas as pd
+
+try:
+    import MetaTrader5 as mt5  # type: ignore
+except Exception:
+    mt5 = None  # type: ignore
+
+from engine import StrategyEngine, TradeSignal  # type: ignore
 
 
-# ----------------------------------------------------
-# PAGE & SESSION SETUP
-# ----------------------------------------------------
-
+# --------------------------------------------------------------------
+# BASIC PAGE SETUP
+# --------------------------------------------------------------------
 st.set_page_config(
     page_title="Gold Gladiator",
     layout="wide",
 )
 
-# Initialise session state keys
+# --------------------------------------------------------------------
+# SESSION STATE INITIALIZATION
+# --------------------------------------------------------------------
 if "logged_in" not in st.session_state:
-    st.session_state.logged_in = False
+    st.session_state["logged_in"] = False
+
 if "username" not in st.session_state:
-    st.session_state.username = ""
-if "risk_perc" not in st.session_state:
-    st.session_state.risk_perc = 1.0
-if "exec_mode" not in st.session_state:
-    st.session_state.exec_mode = "Paper / Monitor Only"
+    st.session_state["username"] = ""
+
 if "mt5_connected" not in st.session_state:
-    st.session_state.mt5_connected = False
-if "mt5_info" not in st.session_state:
-    st.session_state.mt5_info = None
+    st.session_state["mt5_connected"] = False
+
 if "mt5_login" not in st.session_state:
-    st.session_state.mt5_login = ""
-if "mt5_password" not in st.session_state:
-    st.session_state.mt5_password = ""
+    st.session_state["mt5_login"] = None
+
 if "mt5_server" not in st.session_state:
-    st.session_state.mt5_server = ""
+    st.session_state["mt5_server"] = None
+
+if "risk_perc" not in st.session_state:
+    st.session_state["risk_perc"] = 1.0
+
+if "engine" not in st.session_state:
+    st.session_state["engine"] = StrategyEngine(
+        risk_per_trade_pct=st.session_state["risk_perc"]
+    )
+
+if "last_scan_signals" not in st.session_state:
+    st.session_state["last_scan_signals"] = []
+
+if "last_scan_time" not in st.session_state:
+    st.session_state["last_scan_time"] = None
 
 
-# ----------------------------------------------------
-# MT5 CONNECTOR
-# ----------------------------------------------------
-
-def connect_mt5(login: str, password: str, server: str):
-    """
-    Simple MT5 connection helper.
-    Returns (ok: bool, info_or_error: dict | str)
-    """
-    try:
-        # Ensure previous session is closed
-        mt5.shutdown()
-
-        if not mt5.initialize():
-            return False, f"initialize() failed: {mt5.last_error()}"
-
-        # login must be int
-        try:
-            login_int = int(login)
-        except ValueError:
-            mt5.shutdown()
-            return False, "Login must be a number (account ID)."
-
-        authorized = mt5.login(login_int, password=password, server=server)
-        if not authorized:
-            err = mt5.last_error()
-            mt5.shutdown()
-            return False, f"login failed: {err}"
-
-        acc = mt5.account_info()
-        if acc is None:
-            err = mt5.last_error()
-            mt5.shutdown()
-            return False, f"account_info() failed: {err}"
-
-        info = {
-            "login": acc.login,
-            "name": acc.name,
-            "server": acc.server,
-            "balance": acc.balance,
-            "equity": acc.equity,
-        }
-
-        # you can keep MT5 open if you want; here we close after test
-        mt5.shutdown()
-        return True, info
-
-    except Exception as e:
-        mt5.shutdown()
-        return False, str(e)
-
-
-# ----------------------------------------------------
-# UI SECTIONS
-# ----------------------------------------------------
-
-def login_screen():
+# --------------------------------------------------------------------
+# LOGIN SCREEN
+# --------------------------------------------------------------------
+def show_login_screen() -> None:
     st.title("GOLD GLADIATOR – Owner Login")
     st.write(
-        "This login only protects the console on **this laptop**. "
+        "This login just protects this console on this laptop. "
         "No data is being sent anywhere yet."
     )
 
-    username = st.text_input("Username")
-    password = st.text_input("Password", type="password")
+    with st.form("login_form"):
+        username = st.text_input("Username")
+        password = st.text_input("Password", type="password")
+        submit = st.form_submit_button("Login")
 
-    if st.button("Login", type="primary"):
-        if username.strip() and password:
-            st.session_state.logged_in = True
-            st.session_state.username = username.strip()
-        else:
-            st.error("Please enter **both** username and password.")
+        if submit:
+            if username.strip() == "" or password.strip() == "":
+                st.error("Enter any username and password to continue.")
+            else:
+                st.session_state["logged_in"] = True
+                st.session_state["username"] = username.strip()
+                st.success(f"Logged in as {username.strip()}")
+                st.rerun()
 
 
-def mt5_connection_panel():
-    st.subheader("MT5 Connection")
+# --------------------------------------------------------------------
+# MT5 CONNECTION BLOCK
+# --------------------------------------------------------------------
+def connect_mt5_block() -> None:
+    st.header("MT5 Connection")
 
-    st.caption(
-        "Enter the **exact** MT5 login, password and server name from your MT5 terminal."
-    )
+    if mt5 is None:
+        st.error(
+            "MetaTrader5 Python package is not available. "
+            "Make sure it is installed in this Python environment."
+        )
+        return
+
+    st.write("Enter the exact MT5 login, password and server name from your MT5 terminal.")
 
     login = st.text_input(
         "MT5 Login (account number)",
-        value=st.session_state.mt5_login,
+        value=str(st.session_state.get("mt5_login") or ""),
         key="mt5_login_input",
     )
-    password = st.text_input(
-        "MT5 Password",
-        type="password",
-        value=st.session_state.mt5_password,
-        key="mt5_password_input",
-    )
+    password = st.text_input("MT5 Password", type="password", key="mt5_password_input")
     server = st.text_input(
-        "MT5 Server (exact name, e.g. 'XMGlobal-MT5 6')",
-        value=st.session_state.mt5_server,
+        "MT5 Server (exact name, e.g. 'XMGlobal-MT5 5')",
+        value=str(st.session_state.get("mt5_server") or ""),
         key="mt5_server_input",
     )
 
     col1, col2 = st.columns(2)
     with col1:
         if st.button("Connect / Test MT5"):
-            if not login.strip() or not password or not server.strip():
-                st.error("Fill **all** MT5 fields before connecting.")
+            if not login or not password or not server:
+                st.error("Fill ALL MT5 fields before connecting.")
             else:
-                # save to session
-                st.session_state.mt5_login = login.strip()
-                st.session_state.mt5_password = password
-                st.session_state.mt5_server = server.strip()
-
-                ok, info = connect_mt5(
-                    st.session_state.mt5_login,
-                    st.session_state.mt5_password,
-                    st.session_state.mt5_server,
-                )
-
-                if ok:
-                    st.session_state.mt5_connected = True
-                    st.session_state.mt5_info = info
-                    st.success(
-                        f"✅ Connected to MT5 account **{info['login']}** on **{info['server']}**"
-                    )
+                # Clean any previous connection
+                mt5.shutdown()
+                ok = mt5.initialize()
+                if not ok:
+                    st.error(f"MT5 initialize() failed: {mt5.last_error()}")
                 else:
-                    st.session_state.mt5_connected = False
-                    st.session_state.mt5_info = None
-                    st.error(f"❌ MT5 connection failed: {info}")
+                    authorized = mt5.login(int(login), password=password, server=server)
+                    if not authorized:
+                        st.error(f"MT5 login failed: {mt5.last_error()}")
+                    else:
+                        info = mt5.account_info()
+                        if info is None:
+                            st.error("Connected, but could not fetch account_info().")
+                        else:
+                            st.session_state["mt5_connected"] = True
+                            st.session_state["mt5_login"] = int(login)
+                            st.session_state["mt5_server"] = server
+                            st.success(
+                                f"Connected to MT5 account {info.login} on {server} – "
+                                f"Balance: {info.balance}, Equity: {info.equity}"
+                            )
 
     with col2:
         if st.button("Clear MT5 Details"):
-            st.session_state.mt5_login = ""
-            st.session_state.mt5_password = ""
-            st.session_state.mt5_server = ""
-            st.session_state.mt5_connected = False
-            st.session_state.mt5_info = None
-            st.info("Cleared saved MT5 details.")
+            st.session_state["mt5_connected"] = False
+            st.session_state["mt5_login"] = None
+            st.session_state["mt5_server"] = None
+            mt5.shutdown()
+            st.info("Cleared MT5 connection details.")
 
-    if st.session_state.mt5_connected and st.session_state.mt5_info:
-        info = st.session_state.mt5_info
+    if st.session_state["mt5_connected"]:
         st.success(
-            f"Currently marked as **CONNECTED** to {info['server']} – "
-            f"Login: {info['login']}, Balance: {info['balance']}, Equity: {info['equity']}"
+            f"Currently marked as CONNECTED to {st.session_state['mt5_server']} – "
+            f"Login: {st.session_state['mt5_login']}"
         )
     else:
-        st.info("Not connected to MT5 yet. Use the form above to test connection.")
+        st.info("Not connected to MT5 yet.")
 
 
-def owner_console():
-    st.title("Gold Gladiator – Owner Console")
-    st.caption(f"Logged in as **{st.session_state.username}**")
-
-    # Logout button
-    if st.button("Logout"):
-        st.session_state.logged_in = False
-        st.session_state.username = ""
-        st.session_state.mt5_connected = False
-        st.session_state.mt5_info = None
-        st.experimental_set_query_params()  # soft reset of URL state
-        st.stop()
-
-    st.divider()
-
-    # === Risk Settings ===
+# --------------------------------------------------------------------
+# RISK + MODE
+# --------------------------------------------------------------------
+def risk_and_mode_block() -> str:
     st.subheader("Risk Settings")
-    st.session_state.risk_perc = st.slider(
+
+    risk = st.slider(
         "Risk per trade (%)",
         min_value=0.25,
         max_value=10.0,
-        value=float(st.session_state.risk_perc),
+        value=float(st.session_state["risk_perc"]),
         step=0.25,
-        help="This is the percentage of account equity the AI will risk per trade once live execution is enabled.",
     )
+    st.session_state["risk_perc"] = float(risk)
+    st.session_state["engine"].risk_per_trade_pct = float(risk)
 
-    st.write(f"**Current risk per trade:** {st.session_state.risk_perc:.2f}%")
+    st.write(f"Current risk per trade: **{risk:.2f}%**")
 
-    # === Execution Mode ===
     st.subheader("Execution Mode")
-
-    exec_mode = st.selectbox(
+    mode = st.selectbox(
         "Mode",
-        [
-            "Paper / Monitor Only",
-            "Mirror (confirm trades manually in MT5 first)",
-            "Full Auto (AI sends orders to MT5)",
-        ],
-        index=["Paper / Monitor Only", "Mirror (confirm trades manually in MT5 first)",
-               "Full Auto (AI sends orders to MT5)"].index(st.session_state.exec_mode)
-        if st.session_state.exec_mode in [
-            "Paper / Monitor Only",
-            "Mirror (confirm trades manually in MT5 first)",
-            "Full Auto (AI sends orders to MT5)",
-        ]
-        else 0,
+        ["Paper / Monitor Only", "Live (send orders later)"],
+        index=0,
+        help="For now, only 'Paper / Monitor Only' is supported. No orders are sent.",
+    )
+    st.info(
+        "In this first version the AI will only scan and display trades. "
+        "It will NOT send any orders, regardless of mode."
     )
 
-    st.session_state.exec_mode = exec_mode
+    return mode
 
-    if exec_mode == "Paper / Monitor Only":
-        st.info("The AI will **only scan and display** trades. No orders will be sent.")
-    elif exec_mode == "Mirror (confirm trades manually in MT5 first)":
-        st.warning(
-            "The AI will propose trades. You will **manually confirm/execute** them in MT5."
+
+# --------------------------------------------------------------------
+# SESSION OVERVIEW
+# --------------------------------------------------------------------
+def session_overview_block(engine: StrategyEngine) -> None:
+    st.subheader("Session Overview (live once engine is fully wired)")
+
+    if not st.session_state["mt5_connected"]:
+        st.info("Connect to MT5 above to see live account stats.")
+        return
+
+    try:
+        snap = engine.get_account_snapshot()
+    except Exception as e:
+        st.error(f"Error reading account info from MT5: {e}")
+        return
+
+    if snap is None:
+        st.warning("Could not fetch account info from MT5.")
+        return
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Account Balance", f"{snap['balance']:.2f}")
+    c2.metric("Equity", f"{snap['equity']:.2f}")
+    c3.metric("Free Margin", f"{snap['margin_free']:.2f}")
+    c4.metric("Risk / Trade", f"{st.session_state['risk_perc']:.2f}%")
+
+    st.caption("P/L and Win-rate stats will come once live strategy results are recorded.")
+
+
+# --------------------------------------------------------------------
+# SCANNER BLOCK
+# --------------------------------------------------------------------
+def scanner_block(engine: StrategyEngine) -> None:
+    st.subheader("Gold Scanner – LIVE Market Check")
+
+    if not st.session_state["mt5_connected"]:
+        st.info("Connect to MT5 above, then use this scanner.")
+        return
+
+    st.write(
+        """When you press **Scan GOLD now**, the engine will:
+
+- Find your GOLD symbol on this MT5 server (XAUUSD / GOLD / etc)
+- Pull recent M15 candles
+- Detect a simple impulse move and, if found, propose **one** momentum trade.
+
+This is only the *first wiring* so you can see it working.
+Later we can replace this with your full London / NY Setup-1 & Setup-2 logic."""
+    )
+
+    if st.button("Scan GOLD now"):
+        try:
+            signals = engine.scan_gold_momentum()
+            st.session_state["last_scan_signals"] = signals
+            st.session_state["last_scan_time"] = dt.datetime.now()
+        except Exception as e:
+            st.error(f"Error while scanning market: {e}")
+            return
+
+    last_time: Optional[dt.datetime] = st.session_state["last_scan_time"]
+    signals: List[TradeSignal] = st.session_state["last_scan_signals"]
+
+    if last_time is None:
+        st.info("No scan has been run yet. Press the button above.")
+        return
+
+    st.write(f"Last scan time: **{last_time.strftime('%Y-%m-%d %H:%M:%S')}**")
+
+    if not signals:
+        st.warning("Scan completed. No valid GOLD setups detected at this moment.")
+        return
+
+    # Build a small table of suggested trades
+    rows = []
+    for sig in signals:
+        rows.append(
+            {
+                "Time": sig.time.strftime("%Y-%m-%d %H:%M"),
+                "Symbol": sig.symbol,
+                "TF": sig.timeframe,
+                "Direction": sig.direction.upper(),
+                "Setup": sig.setup,
+                "Entry": round(sig.entry, 2),
+                "SL": round(sig.stop_loss, 2),
+                "TP": round(sig.take_profit, 2),
+                "R-multiple": sig.risk_r,
+            }
         )
-    else:
-        st.error(
-            "Full Auto is a future step. For safety, live order sending is **not enabled** yet."
-        )
 
-    st.divider()
-
-    # === Session Overview (placeholder until engine is wired) ===
-    st.subheader("Session Overview (placeholder until engine is wired)")
-
-    cols = st.columns(4)
-    with cols[0]:
-        st.metric("Account Balance", "—")
-    with cols[1]:
-        st.metric("Net P/L (Session)", "—")
-    with cols[2]:
-        st.metric("Win Rate", "—")
-    with cols[3]:
-        st.metric("Risk / Trade", f"{st.session_state.risk_perc:.2f}%")
-
+    df = pd.DataFrame(rows)
+    st.dataframe(df, use_container_width=True)
     st.caption(
-        "These values will be filled once the strategy engine is fully wired to MT5 history and live trades."
-    )
-
-    st.divider()
-
-    # === MT5 Connection Panel ===
-    mt5_connection_panel()
-
-    st.divider()
-
-    st.caption(
-        "Next step: wire your **StrategyEngine** so this console pulls real stats and signals from MT5."
+        "These are **paper** trade suggestions only. "
+        "No orders are being sent to MT5 yet."
     )
 
 
-# ----------------------------------------------------
-# MAIN
-# ----------------------------------------------------
+# --------------------------------------------------------------------
+# MAIN APP
+# --------------------------------------------------------------------
+def main() -> None:
+    if not st.session_state["logged_in"]:
+        show_login_screen()
+        return
 
-def main():
-    if not st.session_state.logged_in:
-        login_screen()
-    else:
-        owner_console()
+    st.title("Gold Gladiator – Owner Console")
+    st.write(f"Logged in as **{st.session_state['username']}**")
+
+    engine: StrategyEngine = st.session_state["engine"]
+
+    _mode = risk_and_mode_block()
+
+    st.markdown("---")
+
+    connect_mt5_block()
+
+    st.markdown("---")
+
+    session_overview_block(engine)
+
+    st.markdown("---")
+
+    scanner_block(engine)
 
 
 if __name__ == "__main__":
