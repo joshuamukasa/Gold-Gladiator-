@@ -1,99 +1,205 @@
-# strategy_engine.py
+import datetime as dt
+from dataclasses import dataclass
+from typing import List, Optional, Dict, Any
 
 import numpy as np
-import pandas as pd
+
+try:
+    import MetaTrader5 as mt5  # type: ignore
+except Exception:  # MetaTrader5 might not exist in some environments
+    mt5 = None  # type: ignore
 
 
-def _to_dataframe(rates_array):
+@dataclass
+class TradeSignal:
+    time: dt.datetime
+    symbol: str
+    timeframe: str
+    direction: str  # 'buy' or 'sell'
+    setup: str      # 'setup1' or 'setup2' or 'momentum'
+    entry: float
+    stop_loss: float
+    take_profit: float
+    risk_r: float
+
+
+class StrategyEngine:
     """
-    Convert MT5 rates array to a clean pandas DataFrame.
-    Expects fields: time, open, high, low, close, tick_volume, spread, real_volume
-    """
-    if rates_array is None or len(rates_array) == 0:
-        return None
+    First wiring of your Gold setup scanner.
 
-    df = pd.DataFrame(rates_array)
-    # Ensure required columns exist
-    needed = ["time", "open", "high", "low", "close"]
-    for col in needed:
-        if col not in df.columns:
+    This version is intentionally simple & safe:
+    - It only scans one symbol (your GOLD symbol on the current MT5 account)
+    - It looks for a strong intraday impulse move and proposes 1 momentum trade
+      in the direction of that move.
+    - It NEVER sends orders. It only returns TradeSignal objects for the UI.
+    """
+
+    def __init__(self, risk_per_trade_pct: float = 1.0) -> None:
+        self.risk_per_trade_pct = risk_per_trade_pct
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+    def _require_mt5(self) -> None:
+        if mt5 is None:
+            raise RuntimeError("MetaTrader5 package is not available in this Python environment.")
+
+    def find_gold_symbol(self) -> Optional[str]:
+        """
+        Try to locate the GOLD symbol on the connected MT5 server.
+
+        1) Check a list of common names.
+        2) If nothing matches, fall back to the first symbol that contains 'XAU'.
+        """
+        self._require_mt5()
+
+        candidates = [
+            "XAUUSD",
+            "XAUUSD.",
+            "XAUUSDm",
+            "XAUUSDmicro",
+            "GOLD",
+            "GOLDmicro",
+            "XAUUSD-Var",
+            "XAUUSD.pro",
+            "XAUUSD.cash",
+        ]
+
+        symbols = mt5.symbols_get()
+        if symbols is None:
             return None
 
-    # Convert unix time to pandas datetime if it's numeric
-    if np.issubdtype(df["time"].dtype, np.number):
-        df["time"] = pd.to_datetime(df["time"], unit="s")
+        upper_to_name = {s.name.upper(): s.name for s in symbols}
 
-    return df[["time", "open", "high", "low", "close"]]
+        # 1) Exact candidates
+        for c in candidates:
+            if c.upper() in upper_to_name:
+                return upper_to_name[c.upper()]
 
+        # 2) Anything containing "XAU"
+        for s in symbols:
+            if "XAU" in s.name.upper():
+                return s.name
 
-def _dominant_direction(df):
-    """
-    Very simple "who is in control" check based on closes.
-    This is NOT your full setup logic – just a bias helper.
-    """
-    if df is None or len(df) < 5:
-        return "UNKNOWN"
+        return None
 
-    first_close = df["close"].iloc[0]
-    last_close = df["close"].iloc[-1]
+    def _load_candles(
+        self,
+        symbol: str,
+        timeframe: Any,
+        count: int = 300,
+    ) -> Optional[np.ndarray]:
+        """Load recent candles from MT5."""
+        self._require_mt5()
 
-    if last_close > first_close * 1.002:  # >0.2% up
-        return "BUY"
-    if last_close < first_close * 0.998:  # >0.2% down
-        return "SELL"
-    return "RANGE"
+        rates = mt5.copy_rates_from_pos(symbol, timeframe, 0, count)
+        if rates is None or len(rates) == 0:
+            return None
+        return rates
 
+    # ------------------------------------------------------------------
+    # Public API used by the Streamlit app
+    # ------------------------------------------------------------------
+    def get_account_snapshot(self) -> Optional[Dict[str, float]]:
+        """
+        Fetch live account info from the currently-connected MT5 terminal.
 
-def analyse_market(rates_m5, rates_m15):
-    """
-    Main entry point used by the Streamlit app.
+        Returns None if MT5 is not connected.
+        """
+        self._require_mt5()
 
-    Right now this function:
-    - converts raw MT5 rates to DataFrames
-    - figures out dominant direction on M15
-    - ALWAYS returns NO_TRADE to stay safe until we
-      encode your exact Setup 1 / Setup 2 rules.
+        info = mt5.account_info()
+        if info is None:
+            return None
 
-    Returns a dict, e.g.:
+        return {
+            "login": float(info.login),
+            "balance": float(info.balance),
+            "equity": float(info.equity),
+            "margin": float(info.margin),
+            "margin_free": float(info.margin_free),
+        }
 
-    {
-        "has_setup": False,
-        "setup_name": None,
-        "direction": "BUY" / "SELL" / "RANGE" / "UNKNOWN",
-        "timeframe": "M15",
-        "entry_price": None,
-        "stop_loss": None,
-        "take_profit": None,
-        "explanation": "..."
-    }
-    """
+    def scan_gold_momentum(self) -> List[TradeSignal]:
+        """
+        Very first 'in action' scan.
 
-    df15 = _to_dataframe(rates_m15)
-    df5 = _to_dataframe(rates_m5)
+        Logic (kept simple on purpose so it’s robust):
+        - Find GOLD symbol on this MT5.
+        - Pull ~200 candles on M15.
+        - Measure the move from 20 bars ago to now.
+        - If move is strong enough, propose ONE momentum trade in that direction,
+          with a stop behind the recent swing and TP at 2R.
+        """
 
-    direction = _dominant_direction(df15)
+        self._require_mt5()
 
-    # 🔒 SAFETY: we don't auto-trade yet – just report bias
-    result = {
-        "has_setup": False,          # <-- always NO_TRADE for now
-        "setup_name": None,
-        "direction": direction,
-        "timeframe": "M15",
-        "entry_price": None,
-        "stop_loss": None,
-        "take_profit": None,
-        "explanation": (
-            "Pipeline test only – MT5 connection and candle "
-            "processing are working. Setup-1 / Setup-2 rules "
-            "still need to be fully encoded here."
-        ),
-        "last_candle_time": df15["time"].iloc[-1] if df15 is not None and len(df15) else None,
-    }
+        symbol = self.find_gold_symbol()
+        if symbol is None:
+            return []
 
-    # Later we will replace this block with your real logic:
-    # - detect manipulation vs clean move
-    # - break of structure
-    # - retrace into gap + OB
-    # - engulfing confirmation in the correct time window
+        candles = self._load_candles(symbol, mt5.TIMEFRAME_M15, count=200)
+        if candles is None or len(candles) < 30:
+            return []
 
-    return result
+        closes = np.array([c["close"] for c in candles], dtype=float)
+        highs = np.array([c["high"] for c in candles], dtype=float)
+        lows = np.array([c["low"] for c in candles], dtype=float)
+        times = np.array([dt.datetime.fromtimestamp(c["time"]) for c in candles])
+
+        last_close = closes[-1]
+        lookback = 20
+        ref_close = closes[-lookback]
+
+        move_points = last_close - ref_close
+        move_pct = move_points / ref_close * 100.0
+
+        # Require at least 0.3% move to consider it a "clear" intraday impulse.
+        min_move_pct = 0.3
+
+        if abs(move_pct) < min_move_pct:
+            # No strong move -> no trade.
+            return []
+
+        if move_points > 0:
+            direction = "buy"
+            setup = "momentum_up"
+            # stop below recent swing low
+            recent_low = float(lows[-10:].min())
+            entry = float(last_close)
+            stop_loss = recent_low
+        else:
+            direction = "sell"
+            setup = "momentum_down"
+            # stop above recent swing high
+            recent_high = float(highs[-10:].max())
+            entry = float(last_close)
+            stop_loss = recent_high
+
+        # Basic 2R take-profit around that stop distance
+        if direction == "buy":
+            risk_per_unit = entry - stop_loss
+            if risk_per_unit <= 0:
+                return []
+            take_profit = entry + 2.0 * risk_per_unit
+        else:
+            risk_per_unit = stop_loss - entry
+            if risk_per_unit <= 0:
+                return []
+            take_profit = entry - 2.0 * risk_per_unit
+
+        risk_r = 2.0  # by construction
+
+        signal = TradeSignal(
+            time=times[-1],
+            symbol=symbol,
+            timeframe="M15",
+            direction=direction,
+            setup=setup,
+            entry=entry,
+            stop_loss=stop_loss,
+            take_profit=take_profit,
+            risk_r=risk_r,
+        )
+
+        return [signal]
